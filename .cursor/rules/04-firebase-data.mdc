@@ -1,0 +1,19 @@
+---
+description: "Uso de Firebase : Firestore/Realtime Database."
+globs: ["src/services/firebase/**/*", "src/features/**/*"]
+alwaysApply: true
+---
+
+- **Modelagem:**
+  - Coleções por domínio: `orders`, `users`, `couriers`, `addresses`, `sessions`.
+  - Campos obrigatórios versionados: `schemaVersion`.
+  - Índices necessários documentados em `src/services/firebase/indexes.md`.
+- **Acesso:**
+  - Um único módulo de inicialização (`src/lib/firebase.ts`).
+  - Funções de data-layer puras: `getOrderById(id)`, `listOrdersByUser(uid)`, etc.
+  - Leituras paginadas e com cursores; nunca carregar listas enormes de uma vez.
+- **Realtime vs Firestore:**
+  - Se **tempo real** crítico (rastreamento do status da entrega/posições): Realtime Database para mudanças frequentes.
+  - Para dados transacionais/consulta flexível: Firestore.
+- **Storage:**
+  - Apenas arquivos públicos estritamente necessários (com regras); URLs temporárias assinadas quando privado.

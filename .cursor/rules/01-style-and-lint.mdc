@@ -1,0 +1,18 @@
+---
+description: "Estilo, formatação e lint para RN/Expo (TS)."
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "app.config.*", "package.json"]
+alwaysApply: true
+---
+
+- Usar **TypeScript** estrito: `"strict": true` no `tsconfig.json`.
+- Formatação com **Prettier** (sem estilos exóticos).
+- Lint: **ESLint** com `@react-native`/`react-hooks`/`unicorn` quando possível.
+- Imports organizados: módulos externos antes, internos depois; sem paths relativos profundos (usar `baseUrl`/`paths`).
+- Componentes:
+  - Funções puras, evitar side effects no render.
+  - Hooks começando com `use*`.
+  - `StyleSheet.create` ou Tailwind/NativeWind (se já usado), mas **não misturar padrões** no mesmo componente.
+- Nomes:
+  - Arquivos de componente: `PascalCase.tsx`
+  - Hooks: `useX.ts`
+  - Serviços: `verb-noun.service.ts` (ex.: `create-order.service.ts`)

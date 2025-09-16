@@ -1,0 +1,12 @@
+---
+description: "Padrões TypeScript + validação de dados."
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+- Usar tipos explícitos para **Order**, **User**, **Address**, **Package**, etc.
+- Validar payloads com **zod** (ou `satisfies`/types TS) na borda (entrada/saída).
+- Funções **puras** sempre que possível; side effects concentrados em serviços/hooks dedicados.
+- Nunca exportar estados mutáveis diretamente; expor funções (`create/get/update`) e seletores.
+- Preferir `readonly` e `as const` quando fizer sentido.
+- Narrowing de erros: `unknown` → refinar para tipos conhecidos no catch.

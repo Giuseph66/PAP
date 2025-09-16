@@ -1,0 +1,10 @@
+---
+description: "Testes mínimos viáveis."
+globs: ["**/*.test.*", "src/**/*"]
+alwaysApply: true
+---
+
+- Unit: serviços e helpers (mocks para Firebase).
+- Component: testes de UI críticos (botões de confirmar, checkout).
+- E2E (opcional): flows chave com Detox se necessário.
+- Regras de cobertura alvo por pasta/domínio; sem perseguir 100% cegamente.

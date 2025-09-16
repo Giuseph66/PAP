@@ -1,0 +1,10 @@
+---
+description: "Como usar o agente e invocar regras no Cursor."
+alwaysApply: true
+---
+
+- Ao pedir alterações: dizer **arquivo alvo**, **bloco** e **resultado esperado**.
+- Se o contexto for grande, solicitar **patch/diff** mínimo.
+- Para gerar telas: pedir **componentização** e caminhos de import.
+- Para domínio `orders`: mencionar esta regra para aplicar os padrões.
+- Se o agente sugerir libs, justificar o porquê e custo de bundle.

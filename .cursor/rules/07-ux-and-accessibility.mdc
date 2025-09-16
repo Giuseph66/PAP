@@ -1,0 +1,12 @@
+---
+description: "UX para app de entregas + A11y."
+globs: ["app/**/*", "src/components/**/*", "src/features/**/*"]
+alwaysApply: true
+---
+
+- Fluxos claros: criar pedido → endereço → confirmação → acompanhamento.
+- **Gestão de estados de carregamento** (skeleton/spinners), vazio e erro.
+- Botões e alvos touch ≥ 44px; contraste AA mínimo.
+- Leitores de tela: `accessibilityLabel`, `accessible` em elementos importantes.
+- Feedback tátil (Haptics) para ações confirmadas.
+- Internacionalização pronta (strings centralizadas).

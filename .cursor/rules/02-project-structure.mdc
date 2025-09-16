@@ -1,0 +1,22 @@
+---
+description: "Estrutura de pastas para app de entregas (Expo Router)."
+globs: ["app/**/*", "src/**/*"]
+alwaysApply: true
+---
+
+Estrutura sugerida:
+- `app/` (Expo Router: rotas, layouts)
+- `src/components/` (UI atômica + compostos)
+- `src/features/` (domínios: `orders/`, `auth/`, `courier/`, `addresses/`)
+- `src/services/` (APIs, Firebase, storage, notifications)
+- `src/lib/` (config de libs, inicializações)
+- `src/store/` (zustand/jotai ou redux se necessário)
+- `src/utils/` (helpers puros)
+- `src/types/` (tipos globais)
+- `src/hooks/` (hooks compartilhados)
+- `src/theme/` (tokens de design)
+- `__tests__/` (testes unitários)
+
+Regra:
+- **Nada** de lógica de rede dentro de componentes.
+- Toda interação com Firebase vai em `src/services/firebase/*`.

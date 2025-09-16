@@ -1,0 +1,12 @@
+---
+description: "Offline-first, cache, fila e sincronização confiável."
+globs: ["src/services/**/*", "src/store/**/*", "src/features/**/*"]
+alwaysApply: true
+---
+
+- **Cache local**: Expo SQLite/AsyncStorage apenas para metadados pequenos; para lotes maiores usar SQLite ou MMKV.
+- **Fila de ações**: pedidos criados offline vão para uma **outbox** (idempotência via `clientId`).
+- **Retentativa** exponencial para falhas transitórias de rede.
+- **Merge de conflitos**: servidor vence para campos de sistema; cliente vence para rascunhos locais (documentar).
+- **Observabilidade**: estados `syncing`, `queued`, `failed`, com UI discreta.
+- **Never block UI**: sempre otimismo controlado + rollback em falha.

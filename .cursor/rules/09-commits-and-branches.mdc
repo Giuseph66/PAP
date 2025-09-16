@@ -1,0 +1,9 @@
+---
+description: "Padrões de commit e branching."
+alwaysApply: true
+---
+
+- Conventional Commits: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`, `test:`.
+- Mensagens no imperativo e curtas; corpo com contexto quando necessário.
+- Branches: `feat/…`, `fix/…`, `chore/…`.
+- PRs pequenos, descrição do **porquê** + checklist de impacto (migras, índices, regras).

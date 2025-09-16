@@ -1,0 +1,12 @@
+---
+description: "Tratamento de erros, logs estruturados e monitoramento."
+globs: ["src/**/*"]
+alwaysApply: true
+---
+
+- Envolver chamadas remotas em `try/catch` com erro tipado.
+- Log estruturado: `{ scope, action, ok, durationMs, error? }`.
+- Sanitizar PII antes de logar.
+- Rastreio mínimo de falhas críticas (Sentry/Expo Crash, se habilitado).
+- Exibir mensagens ao usuário **curtas e específicas**, nunca stack trace.
+- Criar helper `reportError(err, ctx)` e usar em todos os catches relevantes.

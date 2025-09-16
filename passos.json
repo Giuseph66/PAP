@@ -1,0 +1,250 @@
+{
+    "projeto": "NeoArchitect Courier — Firebase-first (sem servidor próprio)",
+    "visao": "Entrega ponto-a-ponto (pickup → dropoff) sob demanda. Sem restaurantes/lojas. Cliente cria um envio; entregadores próximos recebem oferta, aceitam e realizam a corrida com rastreamento e prova de entrega.",
+    "escopo": {
+    "apps": \["Mobile Cliente (React Native + Expo + TS)", "Mobile Entregador (React Native + Expo + TS)", "Console Admin (Web estático em Firebase Hosting)"],
+    "backend\_gerenciado": "Firebase (Auth, Firestore, Realtime Database, Cloud Storage, Cloud Messaging, App Check, Analytics/Crashlytics)",
+    "server\_custom": "Nenhum. Apenas Cloud Functions (serverless) quando for necessário proteger segredos (pagamentos/PIX, matching atômico e webhooks)."
+    },
+    "observacao\_importante": "MySQL não roda embarcado em apps mobile. Para armazenamento local no app use **SQLite** (expo-sqlite) e/ou o cache offline nativo do Firestore.",
+    "stack": {
+    "mobile": {
+    "framework": "React Native + Expo + TypeScript",
+    "libs": \["expo-location", "expo-notifications", "expo-image-picker", "expo-secure-store", "expo-sqlite", "@react-native-firebase/app (opcional via config EAS) ou SDK web modular Firebase", "react-query / zustand"]
+    },
+    "firebase": {
+    "auth": \["Phone (OTP)", "Email/Password (opcional)", "Apple/Google (opcional)"],
+    "firestore": "Banco principal (pedidos, usuários, chat, payouts). Suporte a offline e listeners em tempo real.",
+    "realtime\_db": "Streaming de localização (courier) e presença (menor latência e custo por alta frequência).",
+    "storage": "Fotos (comprovantes, documentos KYC).",
+    "messaging": "FCM para push notifications.",
+    "cloud\_functions": "Rotinas protegidas (PIX/webhooks, matching atômico, reatribuição) — sem manutenção de servidor.",
+    "app\_check": "Proteção contra abuso (SafetyNet/Play Integrity/App Attest).",
+    "analytics\_crash": "Analytics e Crashlytics para KPIs e estabilidade."
+    },
+    "local\_storage": {
+    "sqlite": "Cache e histórico local (shipments, endereços, últimos orçamentos).",
+    "kv": "expo-secure-store para tokens/sessão."
+    }
+    },
+    "dados": {
+    "colecoes\_firestore": {
+    "users": {
+    "doc": "users/{uid}",
+    "campos": \["role: 'cliente'|'courier'|'admin'", "nome", "telefone", "email", "docsVerificados: bool", "createdAt", "updatedAt", "enderecos: \[AddressRef]"]
+    },
+    "couriers": {
+    "doc": "couriers/{uid}",
+    "campos": \["status: 'offline'|'online'|'em\_corrida'", "veiculo: 'moto'|'carro'|'bike'", "capacidadeKg", "score", "kyc:{aprovado\:bool, campos...}", "ultimoHeartbeat"]
+    },
+    "shipments": {
+    "doc": "shipments/{shipmentId}",
+    "campos": \["clienteUid", "pickup:{lat,lng,endereco,contato,instrucoes}", "dropoff:{lat,lng,endereco,contato,instrucoes}", "pacote:{pesoKg,dim:{c,l,a},fragil,valorDeclarado,fotos\[]}", "quote:{preco,distKm,tempoMin,moeda}", "state:'CREATED'|'PRICED'|'PAYMENT\_PENDING'|'PAID'|'DISPATCHING'|'ASSIGNED'|'ARRIVED\_PICKUP'|'PICKED\_UP'|'EN\_ROUTE'|'ARRIVED\_DROPOFF'|'DELIVERED'|'CANCELLED'", "courierUid (opcional)", "etaMin", "timeline:\[eventos]", "createdAt", "updatedAt"]
+    },
+    "payments": {
+    "doc": "payments/{paymentId}",
+    "campos": \["shipmentId", "metodo:'PIX'|'CARD'", "status:'INTENT'|'CONFIRMED'|'CAPTURED'|'REFUNDED'", "valor", "pspRefs:{...}", "createdAt", "updatedAt"]
+    },
+    "payouts": {
+    "doc": "payouts/{payoutId}",
+    "campos": \["courierUid", "valor", "chavePix", "status:'PENDING'|'PAID'|'FAILED'", "corridasRefs:\[shipmentId]", "createdAt"]
+    },
+    "chats": {
+    "subcolecao": "shipments/{shipmentId}/chats/{messageId}",
+    "campos": \["from:'cliente'|'courier'|'suporte'", "tipo:'texto'|'imagem'|'template'", "conteudo", "createdAt"]
+    },
+    "events": {
+    "subcolecao": "shipments/{shipmentId}/events/{eventId}",
+    "campos": \["tipo", "payload", "createdAt"]
+    },
+    "admin": {
+    "doc": "admin/config",
+    "campos": \["zonas\:GeoJSON", "tarifas:{base,km,min,veiculoMultipliers}", "minimos:{porZona}", "boostRegras", "versaoRules"]
+    }
+    },
+    "realtime\_db": {
+    "paths": {
+    "courierLocations": "/courierLocations/{uid} -> { lat, lng, speed, heading, updatedAt, geohash }",
+    "presence": "/presence/{uid} -> 'online'|'offline'"
+    }
+    },
+    "indices\_sugeridos": \[
+    "Firestore: index composto shipments.state + shipments.createdAt desc",
+    "Firestore: index shipments.courierUid + state",
+    "Firestore: chats por createdAt",
+    "Geobusca: geohash (prefix) em courierLocations (indexado no RTDB via chave)"
+    ]
+    },
+    "seguranca": {
+    "firestore\_rules\_exemplo": "rules\_version = '2'; service cloud.firestore { match /databases/{db}/documents { match /users/{uid} { allow read, update: if request.auth.uid == uid; allow create: if request.auth!=null; } match /shipments/{id} { allow create: if request.auth!=null && request.resource.data.clienteUid==request.auth.uid; allow read: if resource.data.clienteUid==request.auth.uid || resource.data.courierUid==request.auth.uid; allow update: if request.auth.uid==resource.data.clienteUid || request.auth.uid==resource.data.courierUid || hasAdmin(); } match /shipments/{id}/chats/{msg} { allow read, create: if isParty(id); } function isParty(id){ return get(/databases/\$(db)/documents/shipments/\$(id)).data.clienteUid==request.auth.uid || get(/databases/\$(db)/documents/shipments/\$(id)).data.courierUid==request.auth.uid || hasAdmin(); } function hasAdmin(){ return request.auth.token.admin==true; } } }",
+    "realtime\_db\_rules\_exemplo": "{ "rules": { "courierLocations": { ".read": "auth != null", "\$uid": { ".write": "auth != null && auth.uid == \$uid" } }, "presence": { "\$uid": { ".read": "auth != null && auth.uid == \$uid", ".write": "auth != null && auth.uid == \$uid" } } } }",
+    "app\_check": "Habilitar App Check com Play Integrity/App Attest e recusar gravações sem token válido.",
+    "privacidade": "Mascarar contatos, evitar dados sensíveis nos chats, retenção mínima em Storage."
+    },
+    "funcoes\_cloud\_functions": \[
+    {
+    "nome": "createPixCharge",
+    "gatilho": "HTTPS callable",
+    "descricao": "Cria cobrança PIX no PSP (segredo no servidorless), retorna QR/copia-e-cola. Grava payments/{paymentId} em Firestore.",
+    "passos": \["Validar auth e ownership do shipment", "Calcular valor com base em quote", "Chamar PSP", "Persistir payment INTENT"]
+    },
+    {
+    "nome": "pixWebhook",
+    "gatilho": "HTTPS endpoint",
+    "descricao": "Recebe confirmação do PSP, valida assinatura, marca payment como CONFIRMED/CAPTURED e muda shipments/{id}.state → 'DISPATCHING'."
+    },
+    {
+    "nome": "dispatchOffer",
+    "gatilho": "Firestore onUpdate shipments.state:'DISPATCHING'",
+    "descricao": "Seleciona couriers próximos (geohash/raio), cria documento offers e dispara push. Expande raio/boost se ninguém aceitar no SLA.",
+    "atomico": "Marca campo lock e deadline para evitar múltiplas atribuições."
+    },
+    {
+    "nome": "acceptOffer",
+    "gatilho": "HTTPS callable",
+    "descricao": "Transação atômica: primeiro courier válido seta shipments.courierUid e state:'ASSIGNED'. Bloqueia demais. Audita evento."
+    },
+    {
+    "nome": "payoutPix",
+    "gatilho": "HTTPS callable/admin",
+    "descricao": "Gera pagamento PIX para courier (payouts) e reconcilia status."
+    }
+    ],
+    "passos": \[
+    {
+    "id": 1,
+    "titulo": "Criar projeto Firebase",
+    "tarefas": \["Criar projeto", "Ativar Auth (Phone/Email)", "Criar Firestore (modo production)", "Habilitar Realtime Database", "Habilitar Storage", "Configurar App Check", "Configurar Analytics/Crashlytics"],
+    "entregaveis": \["firebase.json", "google-services.json (Android)", "GoogleService-Info.plist (iOS)"]
+    },
+    {
+    "id": 2,
+    "titulo": "Branding e Design Tokens",
+    "tarefas": \["Definir paleta NeoElectric", "Criar tokens (cores, tipografia, espaçamentos)", "Salvar tokens (branding.tokens.json)"],
+    "entregaveis": \["branding.tokens.json"]
+    },
+    {
+    "id": 3,
+    "titulo": "Estruturar Banco & Regras",
+    "tarefas": \["Criar coleções Firestore e subcoleções", "Definir índices compostos", "Escrever Firestore Rules/RTDB Rules", "Ativar App Check em todos os SDKs"],
+    "entregaveis": \["firestore.rules", "database.rules.json", "firestore.indexes.json"]
+    },
+    {
+    "id": 4,
+    "titulo": "Monorepo e Apps",
+    "tarefas": \["Criar apps: cliente, entregador, admin web (CRA/Vite ou Expo web)", "Adicionar SDK Firebase modular", "Configurar FCM e canais de notificação"],
+    "entregaveis": \["apps com navegação, tema e providers"]
+    },
+    {
+    "id": 5,
+    "titulo": "Fluxo Cliente — Endereços & Geocoding",
+    "tarefas": \["Autocomplete (SDK externo ou API Maps)", "Salvar endereço em users/{uid}.enderecos", "Validação de zona ativa"],
+    "entregaveis": \["Tela de endereços", "Service geocode.ts"]
+    },
+    {
+    "id": 6,
+    "titulo": "Precificação (Quote) no cliente + função auxiliar opcional",
+    "tarefas": \["Função local: distância (rota) e tempo (ETA)", "Regras: base + km + min + veículo + dinâmico + mínimo por zona", "Opcional: Cloud Function para manter lógica centralizada e antifraude"],
+    "entregaveis": \["pricing.ts (cliente)", "cf: /pricingQuote (opcional)"]
+    },
+    {
+    "id": 7,
+    "titulo": "Criação de Shipment",
+    "tarefas": \["Form de pacote (peso/dim/frágil/fotos)", "Chamar quote", "Criar shipments/{id} com state:'PRICED' → 'PAYMENT\_PENDING'"],
+    "entregaveis": \["Tela criar envio", "Persistência em Firestore"]
+    },
+    {
+    "id": 8,
+    "titulo": "Pagamentos (PIX serverless)",
+    "tarefas": \["Callable createPixCharge (segredos do PSP)", "Webhook pixWebhook", "Atualizar payments e shipments state → 'DISPATCHING'"],
+    "entregaveis": \["functions: createPixCharge, pixWebhook", "Tela PIX (QR/copia-e-cola)"]
+    },
+    {
+    "id": 9,
+    "titulo": "Dispatch (oferta/aceite) sem servidor dedicado",
+    "tarefas": \["Função dispatchOffer ao mudar para DISPATCHING", "Broadcast por raio e score", "Callable acceptOffer com transação atômica"],
+    "entregaveis": \["functions: dispatchOffer, acceptOffer", "Tema de ofertas no app do courier"]
+    },
+    {
+    "id": 10,
+    "titulo": "App Entregador — Operação",
+    "tarefas": \["Toggle online/offline (RTDB presence)", "Recebimento de ofertas (listener)", "Navegação (deeplink)", "Checkpoints: ARRIVED\_PICKUP→PICKED\_UP (foto+PIN)→EN\_ROUTE→DELIVERED (foto+assinatura/PIN)"],
+    "entregaveis": \["Telas de corrida", "Upload Storage + refs em Firestore"]
+    },
+    {
+    "id": 11,
+    "titulo": "Rastreamento e ETA",
+    "tarefas": \["Streaming de localização no RTDB (/courierLocations)", "Recalcular ETA (cliente) ao vivo", "Mapa com polyline e timeline"],
+    "entregaveis": \["service tracking.ts", "Tela de pedido (cliente) com mapa"]
+    },
+    {
+    "id": 12,
+    "titulo": "Chat por Shipment",
+    "tarefas": \["Subcoleção chats com listener", "Templates rápidos", "Push onMessage (FCM)"],
+    "entregaveis": \["WS-like via Firestore listeners", "UI chat contextual"]
+    },
+    {
+    "id": 13,
+    "titulo": "Payouts para Couriers",
+    "tarefas": \["Callable payoutPix (chave Pix do courier)", "Extrato e conciliação", "Relatórios admin"],
+    "entregaveis": \["functions: payoutPix", "Telas ganhos/saque"]
+    },
+    {
+    "id": 14,
+    "titulo": "Admin Web (Hosting)",
+    "tarefas": \["Dashboard ao vivo (listeners) — filas/estados", "CRUD: zonas, tarifas, bloqueios, revisão KYC", "Ferramentas: reatribuir, boost, congelar usuário"],
+    "entregaveis": \["app web estático", "deploy em Firebase Hosting"]
+    },
+    {
+    "id": 15,
+    "titulo": "Observabilidade e Qualidade",
+    "tarefas": \["Analytics (tempo de ciclo, aceite, cancelamentos)", "Crashlytics", "Testes: unit/integration/E2E (Detox)"],
+    "entregaveis": \["dashboards", "pipelines de testes"]
+    },
+    {
+    "id": 16,
+    "titulo": "Publicação (Play/App Store)",
+    "tarefas": \["Assinaturas, políticas, privacidade LGPD", "App Check obrigatório", "TestFlight/Closed testing"],
+    "entregaveis": \["builds assinados", "fichas de loja"]
+    }
+    ],
+    "fluxos": {
+    "maquina\_shipment": \[
+    "CREATED",
+    "PRICED",
+    "PAYMENT\_PENDING",
+    "PAID",
+    "DISPATCHING",
+    "ASSIGNED",
+    "ARRIVED\_PICKUP",
+    "PICKED\_UP",
+    "EN\_ROUTE",
+    "ARRIVED\_DROPOFF",
+    "DELIVERED",
+    "CANCELLED"
+    ],
+    "transicoes": \[
+    "PRICED → PAYMENT\_PENDING (cliente confirma quote)",
+    "PIX CONFIRMED → PAID (webhook)",
+    "PAID → DISPATCHING (function)",
+    "acceptOffer → ASSIGNED (transação)",
+    "Checkpoints → DELIVERED (comprovantes)"
+    ]
+    },
+    "pagamento\_pix": {
+    "estrategia": "PSP via Cloud Function para proteger credenciais; Firestore mantém estado; webhook confirma e libera despacho.",
+    "refunds": "Callable de refund com auditoria.",
+    "gorjeta": "Campo opcional somado ao valor."
+    },
+    "sqlite\_schema\_sugestao": {
+    "DDL": "CREATE TABLE IF NOT EXISTS shipments\_cache(id TEXT PRIMARY KEY, state TEXT, preco REAL, createdAt INTEGER, resumo TEXT); CREATE TABLE IF NOT EXISTS addresses(id TEXT PRIMARY KEY, label TEXT, lat REAL, lng REAL, raw TEXT);",
+    "uso": "Cache de histórico, endereços e últimas cotações para uso offline."
+    },
+    "kpis": \["tempo\_ciclo\_total", "on\_time\_percent", "taxa\_aceite", "taxa\_cancelamento", "NPS", "crash\_free\_rate"],
+    "roadmap\_pos\_mvp": \["Agendamento (janela futura)", "Multistop (coletas/entregas múltiplas)", "Seguro por valor declarado", "Integrações B2B (API pública)"],
+    "notas": \[
+    "Sem servidor próprio ≠ sem backend: Cloud Functions são serverless gerenciadas e necessárias para pagamentos seguros e matching atômico.",
+    "Para real-time com baixo custo/latência de localização, use Realtime Database; para o resto (estado do pedido, chat, auditoria), Firestore.",
+    "Evitar segredos no app. Toda interação com PSP deve passar por Function."
+    ]
+    }
