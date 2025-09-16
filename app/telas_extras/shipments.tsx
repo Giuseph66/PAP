@@ -51,8 +51,8 @@ export default function HomeScreen() {
       const formattedShipments: Shipment[] = clientShipments.map(doc => ({
         id: doc.id,
         clienteUid: doc.clienteUid,
-        clienteName: 'Cliente', // Valor padrão
-        clientePhone: '', // Valor padrão
+        clienteName: doc.clienteName, // Valor padrão
+        clientePhone: doc.clientePhone, // Valor padrão
         pickup: doc.pickup,
         dropoff: doc.dropoff,
         pacote: doc.pacote,
@@ -123,7 +123,7 @@ export default function HomeScreen() {
   );
 
   const recentShipments = shipments.filter(s => 
-    ['DELIVERED', 'CANCELLED'].includes(s.state)
+    ['DELIVERED', 'CANCELLED', 'COURIER_ABANDONED'].includes(s.state)
   ).slice(0, 3);
 
   if (isLoading) {

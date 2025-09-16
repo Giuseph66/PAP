@@ -23,11 +23,13 @@ export default function TabLayout() {
       const role = await getUserRole();
       setUserRole(role ?? 'cliente');
       console.log('userRoleaaaaaaaaa', role);
+      setTimeout(() => {
       if (role === 'courier') {
         router.replace('/(tabs)/courier/courier-home');
-      } else {
-        router.replace('/(tabs)/cliente/business-home');
-      } 
+        } else {
+          router.replace('/(tabs)/cliente/business-home');
+        } 
+      }, 5000);
     })();
 
     const unsubscribe = authService.onSessionChanged((session: Session | null) => {

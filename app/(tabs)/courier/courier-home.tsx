@@ -82,8 +82,31 @@ export default function CourierHomeScreen() {
     setError(null);
     
     try {
-      const userData = await authService.getSession();
-      if (userData) {
+      const session = await authService.getSession();
+      if (session) {
+        // Converter Session para AuthUser
+        const userData: AuthUser = {
+          id: session.userId,
+          email: 'usuario@exemplo.com', // Valor padrão
+          passwordHash: '',
+          salt: '',
+          nome: session.nome, // Valor padrão
+          telefone: session.telefone,
+          role: session.role,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          user: {
+            uid: session.userId,
+            role: session.role,
+            nome: session.nome,
+            telefone: session.telefone,
+            email: 'usuario@exemplo.com',
+            docsVerificados: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            enderecos: [],
+          },
+        };
         setUser(userData);
       }
       // Get current location
@@ -167,6 +190,11 @@ export default function CourierHomeScreen() {
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Não foi possível carregar sua localização');
+      // Define localização padrão em caso de erro
+      setCurrentLocation({
+        latitude: -23.5505,
+        longitude: -46.6333,
+      });
     } finally {
       setRefreshing(false);
     }
@@ -348,7 +376,7 @@ export default function CourierHomeScreen() {
 
           {/* Stats Cards */}
           <View style={styles.statsGrid}>
-            <Card style={[styles.statCard, { backgroundColor: colors.background }]}>
+            <Card style={StyleSheet.flatten([styles.statCard, { backgroundColor: colors.background }])}>
               <Text style={[styles.statValue, { color: colors.text }]}>
                 {formatCurrency(stats.todayEarnings)}
               </Text>
@@ -357,7 +385,7 @@ export default function CourierHomeScreen() {
               </Text>
             </Card>
             
-            <Card style={[styles.statCard, { backgroundColor: colors.background }]}>
+            <Card style={StyleSheet.flatten([styles.statCard, { backgroundColor: colors.background }])}>
               <Text style={[styles.statValue, { color: colors.text }]}>
                 {stats.todayDeliveries}
               </Text>
@@ -366,7 +394,7 @@ export default function CourierHomeScreen() {
               </Text>
             </Card>
             
-            <Card style={[styles.statCard, { backgroundColor: colors.background }]}>
+            <Card style={StyleSheet.flatten([styles.statCard, { backgroundColor: colors.background }])}>
               <View style={styles.ratingContainer}>
                 <MaterialIcons name="star" size={16} color="#FFD700" />
                 <Text style={[styles.statValue, { color: colors.text }]}>
@@ -390,7 +418,7 @@ export default function CourierHomeScreen() {
                 style={styles.actionCard}
                 onPress={handleViewEarnings}
               >
-                <Card style={[styles.actionCardContent, { backgroundColor: colors.background }]}>
+                <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
                   <View style={[styles.actionIcon, { backgroundColor: `${colors.tint}20` }]}>
                     <MaterialIcons name="account-balance-wallet" size={24} color={colors.tint} />
                   </View>
@@ -407,7 +435,7 @@ export default function CourierHomeScreen() {
                 style={styles.actionCard}
                 onPress={handleViewStats}
               >
-                <Card style={[styles.actionCardContent, { backgroundColor: colors.background }]}>
+                <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
                   <View style={[styles.actionIcon, { backgroundColor: `${colors.tint}20` }]}>
                     <MaterialIcons name="bar-chart" size={24} color={colors.tint} />
                   </View>
@@ -423,7 +451,7 @@ export default function CourierHomeScreen() {
           </View>
 
           {/* Online Hours */}
-          <Card style={[styles.hoursCard, { backgroundColor: colors.background }]}>
+          <Card style={StyleSheet.flatten([styles.hoursCard, { backgroundColor: colors.background }])}>
             <View style={styles.hoursHeader}>
               <Text style={[styles.hoursTitle, { color: colors.text }]}>
                 Horas Online Hoje

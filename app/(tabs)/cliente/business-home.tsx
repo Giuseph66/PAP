@@ -55,8 +55,31 @@ export default function BusinessMapHomeScreen() {
     }
     
     try {
-      const userData = await authService.getSession();
-      if (userData) {
+      const session = await authService.getSession();
+      if (session) {
+        // Converter Session para AuthUser
+        const userData: AuthUser = {
+          id: session.userId,
+          email: 'usuario@exemplo.com', // Valor padrão
+          passwordHash: '',
+          salt: '',
+          nome: session.nome, // Valor padrão
+          telefone: session.telefone,
+          role: session.role,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          user: {
+            uid: session.userId,
+            role: session.role,
+            nome: session.nome,
+            telefone: session.telefone,
+            email: 'usuario@exemplo.com',
+            docsVerificados: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            enderecos: [],
+          },
+        };
         setUser(userData);
       }
       // Get current location
@@ -182,6 +205,17 @@ export default function BusinessMapHomeScreen() {
     } catch (err) {
       console.error('Error loading data:', err);
       Alert.alert('Erro', 'Não foi possível carregar sua localização');
+      // Define localização padrão em caso de erro
+      setCurrentLocation({
+        latitude: -23.5505,
+        longitude: -46.6333,
+      });
+      setMapRegion({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
     } finally {
       setRefreshing(false);
     }

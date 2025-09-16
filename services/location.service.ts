@@ -23,13 +23,20 @@ export class LocationService {
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       
       if (foregroundStatus !== 'granted') {
-        throw new Error('Permissão de localização negada');
+        console.warn('Permissão de localização em primeiro plano negada');
+        return false;
       }
 
-      // Para tracking em background (entregadores)
-      const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-      
-      return foregroundStatus === 'granted' && backgroundStatus === 'granted';
+      // Tentar solicitar permissão de background, mas não falhar se não conseguir
+      try {
+        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+        console.log('Status da permissão de background:', backgroundStatus);
+        return foregroundStatus === 'granted';
+      } catch (backgroundError) {
+        console.warn('Não foi possível solicitar permissão de background:', backgroundError);
+        // Retorna true se pelo menos a permissão de foreground foi concedida
+        return foregroundStatus === 'granted';
+      }
     } catch (error) {
       console.error('Erro ao solicitar permissões:', error);
       return false;
@@ -43,7 +50,20 @@ export class LocationService {
     try {
       const hasPermission = await this.requestLocationPermissions();
       if (!hasPermission) {
-        throw new Error('Permissões de localização necessárias');
+        console.warn('Permissões de localização negadas, usando localização padrão');
+        // Retorna localização padrão (São Paulo) quando permissões são negadas
+        return {
+          coords: {
+            latitude: -23.5505,
+            longitude: -46.6333,
+            altitude: null,
+            accuracy: 1000,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: Date.now(),
+        } as Location.LocationObject;
       }
 
       return await Location.getCurrentPositionAsync({
@@ -53,7 +73,19 @@ export class LocationService {
       });
     } catch (error) {
       console.error('Erro ao obter localização:', error);
-      throw new Error('Falha ao obter localização atual');
+      // Retorna localização padrão em caso de erro
+      return {
+        coords: {
+          latitude: -23.5505,
+          longitude: -46.6333,
+          altitude: null,
+          accuracy: 1000,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      } as Location.LocationObject;
     }
   }
 

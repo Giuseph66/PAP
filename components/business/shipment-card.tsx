@@ -143,6 +143,25 @@ export function ShipmentCard({ shipment, onPress, showCourier = false }: Shipmen
           </View>
         </View>
 
+        {/* Exibe notificação de abandono se aplicável */}
+        {shipment.state === 'COURIER_ABANDONED' && (
+          <View style={[styles.abandonNotification, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}>
+            <View style={styles.abandonHeader}>
+              <IconSymbol 
+                name="exclamationmark.triangle.fill" 
+                size={16} 
+                color="#f59e0b" 
+              />
+              <Text style={[styles.abandonTitle, { color: '#92400e' }]}>
+                Entregador Abandonou
+              </Text>
+            </View>
+            <Text style={[styles.abandonMessage, { color: '#92400e' }]}>
+              O entregador anterior abandonou esta corrida. Outro entregador pode aceitar!
+            </Text>
+          </View>
+        )}
+
         {/* Exibe oferta atual se houver */}
         {shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER') && (
           <View style={[styles.offerContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -309,5 +328,25 @@ const styles = StyleSheet.create({
   offerCourier: {
     fontSize: 11,
     fontWeight: '500',
+  },
+  abandonNotification: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  abandonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  abandonTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  abandonMessage: {
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

@@ -9,6 +9,7 @@ import { shipmentFirestoreService } from '@/services/shipment-firestore.service'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
+import { deleteField } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -490,7 +491,7 @@ export default function RideNavigationScreen() {
     try {
       // Salva o motivo do abandono no Firestore e remove o courierUid
       await shipmentFirestoreService.updateShipmentState(ride.id, 'COURIER_ABANDONED' as any, {
-        courierUid: undefined
+        courierUid: deleteField()
       });
       
       // Adiciona evento à timeline

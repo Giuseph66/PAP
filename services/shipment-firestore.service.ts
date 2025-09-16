@@ -15,6 +15,8 @@ import {
 
 export interface CreateShipmentData {
   clienteUid: string;
+  clienteName: string;
+  clientePhone: string;
   pickup: LocationPoint;
   dropoff: LocationPoint;
   pacote: Package;

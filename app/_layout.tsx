@@ -11,7 +11,7 @@ import { notificationService } from '@/services/notification.service';
 import { shipmentFirestoreService } from '@/services/shipment-firestore.service';
 import { Shipment } from '@/types';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
 export const unstable_settings = {
@@ -157,39 +157,25 @@ function RealtimeListener() {
                 lastNotificationAt: data.lastNotificationAt?.toDate(),
                 city: data.city,
               };
-              // Verifica se deve notificar
-              if (notificationService.shouldNotify(shipment, currentCity)) {
-                newShipments.push(shipment);
-              }
-              // Verifica se oferta foi aceita (independente da notificação)
-              if (shipment.state === 'ACCEPTED_OFFER') {
-                // Verifica se a oferta aceita é para o entregador atual
-                authService.getSession().then(async (session) => {
-                  if (session && session.role === 'courier' && session.userId === shipment.courierUid) {
-                    // Verifica se já processou esta oferta aceita
-                    if (!lastProcessedRef.current.has(`accepted_${shipment.id}`)) {
-                      lastProcessedRef.current.add(`accepted_${shipment.id}`);
-                      // Navega automaticamente para a tela de navegação
-                      await handleAcceptedOffer(shipment);
-                    }
-                  }
-                }).catch(error => {
-                  console.error('Error checking session for accepted offer:', error);
-                });
-              }
+              newShipments.push(shipment);
             }
           });
-          // Filtra envios abandonados pelo próprio entregador
+          
+          // Filtra envios abandonados pelo próprio entregador ANTES de verificar notificações
           const session = await authService.getSession();
           const filteredShipments = newShipments.filter(shipment => {
-            if (shipment.state === 'COURIER_ABANDONED') {
-              // Busca o courierUid do último evento de abandono
-              const lastAbandonEvent = shipment.timeline
-                ?.filter(event => event.tipo === 'COURIER_ABANDONED')
-                ?.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+            // Verifica se há eventos de abandono na timeline
+            const abandonEvents = shipment.timeline
+              ?.filter(event => event.tipo === 'COURIER_ABANDONED');
+            
+            if (abandonEvents && abandonEvents.length > 0) {
+              // Verifica se o entregador atual abandonou este envio em QUALQUER momento
+              const hasAbandonedByCurrentCourier = abandonEvents.some(event => 
+                event.payload?.courierUid === session?.userId
+              );
               
-              // Se o último abandono foi pelo entregador atual, não mostra
-              if (lastAbandonEvent?.payload?.courierUid === session?.userId) {
+              // Se o entregador atual abandonou este envio em qualquer momento, não mostra
+              if (hasAbandonedByCurrentCourier) {
                 return false;
               }
             }
@@ -200,7 +186,24 @@ function RealtimeListener() {
           for (const shipment of filteredShipments) {
             if (!lastProcessedRef.current.has(shipment.id)) {
               lastProcessedRef.current.add(shipment.id);
-              await notificationService.showShipmentNotification(shipment);
+              
+              // Verifica se deve notificar
+              if (notificationService.shouldNotify(shipment, currentCity)) {
+                await notificationService.showShipmentNotification(shipment);
+              }
+              
+              // Verifica se oferta foi aceita (independente da notificação)
+              if (shipment.state === 'ACCEPTED_OFFER') {
+                // Verifica se a oferta aceita é para o entregador atual
+                if (session && session.role === 'courier' && session.userId === shipment.courierUid) {
+                  // Verifica se já processou esta oferta aceita
+                  if (!lastProcessedRef.current.has(`accepted_${shipment.id}`)) {
+                    lastProcessedRef.current.add(`accepted_${shipment.id}`);
+                    // Navega automaticamente para a tela de navegação
+                    await handleAcceptedOffer(shipment);
+                  }
+                }
+              }
             }
           }
         });
@@ -248,6 +251,20 @@ function RealtimeListener() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Aguarda um pouco para garantir que o componente está montado
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!isReady) {
+    return null; // ou um loading screen
+  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -261,11 +278,8 @@ export default function RootLayout() {
         <Stack.Screen name="auth/register/company" options={{ headerShown: false }} />
         <Stack.Screen name="auth/register/courier" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/admin-panel" options={{ headerShown: false }} />
-        <Stack.Screen name="telas_extras/courier-stats" options={{ headerShown: false }} />
-        <Stack.Screen name="telas_extras/company-stats" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/finance" options={{ headerShown: false }} />
         <Stack.Screen name="pedir/create-shipment" options={{ headerShown: false }} />
-        <Stack.Screen name="courier/dashboard" options={{ headerShown: false }} />
         <Stack.Screen name="pedir/map-route" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/profile" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/shipments" options={{ headerShown: false }} />

@@ -34,6 +34,7 @@ const stateLabels: Record<ShipmentState, string> = {
   OFFERED: 'Oferta Recebida',
   COUNTER_OFFER: 'Contra-Oferta',
   ACCEPTED_OFFER: 'Oferta Aceita',
+  COURIER_ABANDONED: 'Entregador Abandonou',
 };
 
 const stateColors: Record<ShipmentState, string> = {
@@ -52,6 +53,7 @@ const stateColors: Record<ShipmentState, string> = {
   OFFERED: '#f59e0b',
   COUNTER_OFFER: '#8b5cf6',
   ACCEPTED_OFFER: '#10b981',
+  COURIER_ABANDONED: '#f59e0b',
 };
 
 export default function ShipmentDetailsScreen() {
@@ -70,35 +72,37 @@ export default function ShipmentDetailsScreen() {
   } | null>(null);
 
   const fetchShipment = async () => {
-    try {
-      setIsLoading(true);
-      const shipmentId = params.id as string;
-      
-      if (!shipmentId) {
-        throw new Error('ID do envio não fornecido');
-      }
-      
-      // Fetch the shipment from Firestore
-      const shipmentData = await shipmentFirestoreService.getShipmentById(shipmentId);
-      
-      if (!shipmentData) {
-        throw new Error('Envio não encontrado');
-      }
-      
-      // Convert to Shipment type
-      const shipment: Shipment = {
-        id: shipmentData.id,
-        clienteUid: shipmentData.clienteUid,
-        pickup: shipmentData.pickup,
-        dropoff: shipmentData.dropoff,
-        pacote: shipmentData.pacote,
-        quote: shipmentData.quote,
-        state: shipmentData.state,
-        courierUid: shipmentData.courierUid,
-        etaMin: shipmentData.etaMin,
-        timeline: shipmentData.timeline,
-        createdAt: shipmentData.createdAt,
-        updatedAt: shipmentData.updatedAt,
+      try {
+        setIsLoading(true);
+        const shipmentId = params.id as string;
+        
+        if (!shipmentId) {
+          throw new Error('ID do envio não fornecido');
+        }
+        
+        // Fetch the shipment from Firestore
+        const shipmentData = await shipmentFirestoreService.getShipmentById(shipmentId);
+        
+        if (!shipmentData) {
+          throw new Error('Envio não encontrado');
+        }
+        
+        // Convert to Shipment type
+        const shipment: Shipment = {
+          id: shipmentData.id,
+          clienteUid: shipmentData.clienteUid,
+        clienteName: shipmentData.clienteName,  
+        clientePhone: shipmentData.clientePhone,
+          pickup: shipmentData.pickup,
+          dropoff: shipmentData.dropoff,
+          pacote: shipmentData.pacote,
+          quote: shipmentData.quote,
+          state: shipmentData.state,
+          courierUid: shipmentData.courierUid,
+          etaMin: shipmentData.etaMin,
+          timeline: shipmentData.timeline,
+          createdAt: shipmentData.createdAt,
+          updatedAt: shipmentData.updatedAt,
         // Sistema de ofertas
         offers: shipmentData.offers,
         currentOffer: shipmentData.currentOffer,
@@ -106,10 +110,10 @@ export default function ShipmentDetailsScreen() {
         lastNotificationAt: shipmentData.lastNotificationAt,
         city: shipmentData.city,
         rejectionCount: shipmentData.rejectionCount,
-      };
-      
-      setShipment(shipment);
-      
+        };
+        
+        setShipment(shipment);
+        
         // Calculate price breakdown
         const pricing = estimatePrice({
           distanceKm: shipment.quote.distKm,
@@ -129,14 +133,14 @@ export default function ShipmentDetailsScreen() {
           fragilityMultiplier: shipment.pacote.fragil ? 15 : 0,
           total: finalPrice,
         });
-    } catch (err) {
-      console.error('Error fetching shipment:', err);
-      setError('Falha ao carregar detalhes do envio');
-      Alert.alert('Erro', 'Falha ao carregar detalhes do envio');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      } catch (err) {
+        console.error('Error fetching shipment:', err);
+        setError('Falha ao carregar detalhes do envio');
+        Alert.alert('Erro', 'Falha ao carregar detalhes do envio');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
   useEffect(() => {
     fetchShipment();
@@ -157,6 +161,62 @@ export default function ShipmentDetailsScreen() {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date);
+  };
+
+  const formatTimelineDate = (date: Date | string) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(dateObj);
+  };
+
+  const getTimelineIcon = (tipo: string) => {
+    switch (tipo) {
+      case 'CREATED':
+        return 'add-circle';
+      case 'ACCEPTED':
+        return 'check-circle';
+      case 'COURIER_ABANDONED':
+        return 'cancel';
+      case 'OFFER_ACCEPTED':
+        return 'handshake';
+      case 'OFFER_REJECTED':
+        return 'cancel';
+      case 'PICKED_UP':
+        return 'inventory';
+      case 'DELIVERED':
+        return 'local-shipping';
+      case 'PAID':
+        return 'payment';
+      default:
+        return 'info';
+    }
+  };
+
+  const getTimelineColor = (tipo: string) => {
+    switch (tipo) {
+      case 'CREATED':
+        return '#6b7280';
+      case 'ACCEPTED':
+        return '#10b981';
+      case 'COURIER_ABANDONED':
+        return '#f59e0b';
+      case 'OFFER_ACCEPTED':
+        return '#8b5cf6';
+      case 'OFFER_REJECTED':
+        return '#ef4444';
+      case 'PICKED_UP':
+        return '#10b981';
+      case 'DELIVERED':
+        return '#22c55e';
+      case 'PAID':
+        return '#10b981';
+      default:
+        return '#6b7280';
+    }
   };
 
   const handlePayNow = () => {
@@ -563,6 +623,80 @@ export default function ShipmentDetailsScreen() {
           </Card>
         )}
 
+        {/* Timeline */}
+        {shipment.timeline && shipment.timeline.length > 0 && (
+          <Card style={styles.section}>
+            <View style={styles.timelineHeader}>
+              <MaterialIcons name="timeline" size={24} color={colors.tint} />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Histórico do Envio
+              </Text>
+            </View>
+            
+            <View style={styles.timelineContainer}>
+              {shipment.timeline
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .map((event, index) => (
+                  <View key={index} style={styles.timelineItem}>
+                    <View style={styles.timelineLeft}>
+                      <View style={[
+                        styles.timelineIconContainer, 
+                        { backgroundColor: getTimelineColor(event.tipo) }
+                      ]}>
+                        <MaterialIcons 
+                          name={getTimelineIcon(event.tipo)} 
+                          size={20} 
+                          color="#ffffff" 
+                        />
+                      </View>
+                      {index < shipment.timeline.length - 1 && (
+                        <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />
+                      )}
+                    </View>
+                    
+                    <View style={styles.timelineContent}>
+                      <Text style={[styles.timelineDescription, { color: colors.text }]}>
+                        {event.descricao}
+                      </Text>
+                      
+                      <Text style={[styles.timelineTime, { color: colors.tabIconDefault }]}>
+                        {formatTimelineDate(event.timestamp)}
+                      </Text>
+                      
+                      {/* Mostra informações específicas baseadas no tipo */}
+                      {event.tipo === 'COURIER_ABANDONED' && event.payload?.reason && (
+                        <View style={[styles.timelineDetails, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                          <MaterialIcons name="info" size={16} color="#f59e0b" />
+                          <Text style={[styles.timelineDetailText, { color: '#92400e' }]}>
+                            Motivo: {event.payload.reason}
+                          </Text>
+                        </View>
+                      )}
+                      
+                      {event.tipo === 'OFFER_ACCEPTED' && event.payload?.offeredPrice && (
+                        <View style={[styles.timelineDetails, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+                          <MaterialIcons name="attach-money" size={16} color="#8b5cf6" />
+                          <Text style={[styles.timelineDetailText, { color: '#6b46c1' }]}>
+                            Valor aceito: {formatPrice(event.payload.offeredPrice)}
+                          </Text>
+                        </View>
+                      )}
+                      
+                      {event.tipo === 'ACCEPTED' && event.payload?.courierName && (
+                        <View style={[styles.timelineDetails, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+                          <MaterialIcons name="person" size={16} color="#10b981" />
+                          <Text style={[styles.timelineDetailText, { color: '#047857' }]}>
+                            Entregador: {event.payload.courierName}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+            </View>
+          </Card>
+        )}
+
         {/* Price breakdown */}
         {priceBreakdown && (
           <Card style={styles.section}>
@@ -921,5 +1055,61 @@ const styles = StyleSheet.create({
   },
   rejectOfferButton: {
     flex: 1,
+  },
+  // Estilos para timeline
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  timelineContainer: {
+    paddingLeft: 8,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  timelineLeft: {
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  timelineIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    marginTop: 8,
+    minHeight: 20,
+  },
+  timelineContent: {
+    flex: 1,
+    paddingTop: 8,
+  },
+  timelineDescription: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  timelineTime: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  timelineDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  timelineDetailText: {
+    fontSize: 14,
+    marginLeft: 6,
+    fontWeight: '500',
   },
 });

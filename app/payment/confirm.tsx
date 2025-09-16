@@ -85,6 +85,8 @@ export default function PaymentConfirmationScreen() {
         const shipment: Shipment = {
           id: shipmentData.id,
           clienteUid: shipmentData.clienteUid,
+          clienteName: shipmentData.clienteName,
+          clientePhone: shipmentData.clientePhone,
           pickup: shipmentData.pickup,
           dropoff: shipmentData.dropoff,
           pacote: shipmentData.pacote,
@@ -142,7 +144,7 @@ export default function PaymentConfirmationScreen() {
         [
           {
             text: 'OK',
-            onPress: () => router.replace('/(tabs)/home'),
+            onPress: () => router.replace('/(tabs)/cliente/business-home'),
           },
         ]
       );

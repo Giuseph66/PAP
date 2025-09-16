@@ -373,7 +373,7 @@ useEffect(() => {
         descricao: 'Corrida aceita pelo entregador',
         payload: {
           courierUid: session.userId,
-          courierName: 'Entregador'
+          courierName: session.nome,
         }
       });
       

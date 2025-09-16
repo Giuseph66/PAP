@@ -1,6 +1,5 @@
 import { Shipment } from '@/types';
 import { router } from 'expo-router';
-import { Alert } from 'react-native';
 import { authService } from './auth.service';
 import { shipmentFirestoreService } from './shipment-firestore.service';
 
@@ -14,7 +13,7 @@ class NotificationService {
    */
   shouldNotify(shipment: Shipment, courierCity: string): boolean {
     // Verifica se o envio está disponível
-    if (shipment.state !== 'CREATED' && shipment.state !== 'COUNTER_OFFER') {
+    if (shipment.state !== 'CREATED' && shipment.state !== 'COUNTER_OFFER' && shipment.state !== 'COURIER_ABANDONED') {
       return false;
     }
 
