@@ -82,6 +82,21 @@ export default function BusinessMapHomeScreen() {
         };
         setUser(userData);
       }
+      
+      // Solicitar permissões de localização primeiro
+      const hasPermission = await locationService.requestLocationPermissions();
+      if (!hasPermission) {
+        Alert.alert(
+          'Permissão de Localização',
+          'Para usar o mapa, é necessário permitir o acesso à sua localização. Você pode ativar isso nas configurações do dispositivo.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Configurações', onPress: () => console.log('Abrir configurações') }
+          ]
+        );
+        return;
+      }
+      
       // Get current location
       const location = await locationService.getCurrentLocation();
       const currentPos = {

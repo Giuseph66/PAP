@@ -94,9 +94,9 @@ export class EnhancedAuthService {
       salt,
       role: 'cliente',
       nome: data.companyName,
+      telefone: data.phone,
       cnpj: data.cnpj,
       responsavel: data.responsibleName,
-      telefone: data.phone,
       perfilCompleto: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -179,7 +179,7 @@ export class EnhancedAuthService {
       await updateDoc(doc(firestore, 'authUsers', created.id), {
         perfilCompleto: false,
       });
-      resolvedUser = { ...created, telefone: undefined, perfilCompleto: false } as AuthUser;
+      resolvedUser = { ...created, telefone: '', perfilCompleto: false } as AuthUser;
       firstLogin = true;
     } else {
       // valida senha
@@ -395,6 +395,8 @@ export class EnhancedAuthService {
       token,
       userId: user.id,
       role: user.role,
+      nome: user.nome,
+      telefone: user.telefone,
       expiresAt,
     };
   }

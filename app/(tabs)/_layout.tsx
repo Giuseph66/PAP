@@ -29,7 +29,7 @@ export default function TabLayout() {
         } else {
           router.replace('/(tabs)/cliente/business-home');
         } 
-      }, 5000);
+      }, 100);
     })();
 
     const unsubscribe = authService.onSessionChanged((session: Session | null) => {
@@ -115,6 +115,16 @@ export default function TabLayout() {
             <MaterialIcons name="home" size={focused ? 26 : 24} color={color} />
           ),
           href: userRole === 'courier' ? '/courier/courier-home' : null,
+        }}
+      />
+      <Tabs.Screen
+        name="courier/courier-shipments"
+        options={{
+          title: 'Entregas',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="local-shipping" size={focused ? 26 : 24} color={color} />
+          ),
+          href: userRole === 'courier' ? '/courier/courier-shipments' : null,
         }}
       />
       <Tabs.Screen

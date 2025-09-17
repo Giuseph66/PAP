@@ -94,6 +94,12 @@ export default function AcceptRideScreen() {
   // Estados do modal de chamada
   const [isCallModalVisible, setIsCallModalVisible] = useState(false);
   
+  // Estado para controlar se deve ocultar o botão de rejeitar
+  const [hideRejectButton, setHideRejectButton] = useState(false);
+  
+  // Estado para controlar se deve ocultar o timer (quando vem de courier-shipments)
+  const [hideTimer, setHideTimer] = useState(false);
+  
   // Estados do mapa
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
   const [mapReady, setMapReady] = useState(false);
@@ -149,6 +155,12 @@ export default function AcceptRideScreen() {
 
   // Processa parâmetros recebidos ou usa dados mockados
   useEffect(() => {
+    // Verifica se deve ocultar o botão de rejeitar e timer (quando vem de courier-shipments)
+    if (params.hideReject === 'true') {
+      setHideRejectButton(true);
+      setHideTimer(true); // Também oculta o timer
+    }
+    
     let rideData: RideRequest;
     // Se está em modo de teste, usa os parâmetros recebidos
       rideData = {
@@ -213,9 +225,9 @@ export default function AcceptRideScreen() {
     }).start();
   }, []); // Removido [params] para evitar loop infinito
 
-  // Timer countdown
+  // Timer countdown (só funciona se não estiver oculto)
   useEffect(() => {
-    if (!rideRequest || isAccepted || isRejected) return;
+    if (!rideRequest || isAccepted || isRejected || hideTimer) return;
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -232,7 +244,7 @@ export default function AcceptRideScreen() {
         clearInterval(timerRef.current);
       }
     };
-  }, [rideRequest, isAccepted, isRejected]);
+  }, [rideRequest, isAccepted, isRejected, hideTimer]);
 
   // Animação do timer
   useEffect(() => {
@@ -471,7 +483,7 @@ useEffect(() => {
     setTimeout(async () => {
       // Verifica se pode voltar
       if (router.canGoBack()) {
-        router.back();
+      router.back();
       } else {
         // Se não pode voltar, vai para home
         const session = await authService.getSession();
@@ -522,6 +534,11 @@ useEffect(() => {
 
   const handleCloseOfferModal = () => {
     setShowOfferModal(false);
+    router.back();
+  };
+
+  const handleCloseRide = () => {
+    // Fecha a tela e volta para a anterior
     router.back();
   };
 
@@ -648,11 +665,11 @@ useEffect(() => {
           </MapView>
         </View>
 
-        {/* Cabeçalho com timer */}
+        {/* Cabeçalho com timer ou botão fechar */}
         <View style={[styles.header, { backgroundColor: colors.background }]}>
           <View style={styles.headerContent}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>
-              Nova Corrida
+              {hideTimer ? 'Corrida Disponível' : 'Nova Corrida'}
             </Text>
             <View style={styles.headerRight}>
               <TouchableOpacity
@@ -665,21 +682,33 @@ useEffect(() => {
                   color="#fff" 
                 />
               </TouchableOpacity>
-              <Animated.View 
-                style={[
-                  styles.timerContainer,
-                  { 
-                    transform: [{ scale: pulseAnimation }],
-                    opacity: timeLeft <= 5 ? 0.8 : 1
-                  }
-                ]}
-              >
-                <View style={[styles.timerRing, { borderColor: timeLeft <= 5 ? '#f44336' : colors.tint }]}>
-                  <Text style={[styles.timerText, { color: timeLeft <= 5 ? '#f44336' : colors.tint }]}>
-                    {timeLeft}
-                  </Text>
-                </View>
-              </Animated.View>
+              
+              {hideTimer ? (
+                // Botão X para fechar quando vem de courier-shipments
+                <TouchableOpacity
+                  style={[styles.closeButton, { backgroundColor: '#f44336' }]}
+                  onPress={handleCloseRide}
+                >
+                  <MaterialIcons name="close" size={20} color="#fff" />
+                </TouchableOpacity>
+              ) : (
+                // Timer normal quando vem de notificação
+                <Animated.View 
+                  style={[
+                    styles.timerContainer,
+                    { 
+                      transform: [{ scale: pulseAnimation }],
+                      opacity: timeLeft <= 5 ? 0.8 : 1
+                    }
+                  ]}
+                >
+                  <View style={[styles.timerRing, { borderColor: timeLeft <= 5 ? '#f44336' : colors.tint }]}>
+                    <Text style={[styles.timerText, { color: timeLeft <= 5 ? '#f44336' : colors.tint }]}>
+                      {timeLeft}
+                    </Text>
+                  </View>
+                </Animated.View>
+              )}
             </View>
           </View>
           
@@ -1020,20 +1049,36 @@ useEffect(() => {
               styles.actionButtons,
               { marginTop: isInfoCollapsed ? 4 : 8 } // Reduced margins
             ]}>
-            <TouchableOpacity
-              style={[styles.rejectButton, { 
-                borderColor: '#f44336',
-                paddingVertical: 12, // Reduced padding
-                borderRadius: 10, // Slightly reduced border radius
-              }]}
-              onPress={handleReject}
-              disabled={isAccepted || isRejected || isLoading}
-            >
-              <MaterialIcons name="close" size={24} color="#f44336" />
-              <Text style={[styles.rejectButtonText, { color: '#f44336' }]}>
-                Recusar
-              </Text>
-            </TouchableOpacity>
+            {!hideRejectButton ? (
+              <TouchableOpacity
+                style={[styles.rejectButton, { 
+                  borderColor: '#f44336',
+                  paddingVertical: 12, // Reduced padding
+                  borderRadius: 10, // Slightly reduced border radius
+                }]}
+                onPress={handleReject}
+                disabled={isAccepted || isRejected || isLoading}
+              >
+                <MaterialIcons name="close" size={24} color="#f44336" />
+                <Text style={[styles.rejectButtonText, { color: '#f44336' }]}>
+                  Recusar
+                </Text>
+              </TouchableOpacity>
+            ):(
+              <TouchableOpacity
+                style={[styles.rejectButton, { 
+                  borderColor: '#f44336',
+                  paddingVertical: 12, // Reduced padding
+                  borderRadius: 10, // Slightly reduced border radius
+                }]}
+                onPress={() => {router.back()}}
+              >
+                <MaterialIcons name="close" size={24} color="#f44336" />
+                <Text style={[styles.rejectButtonText, { color: '#f44336' }]}>
+                  Voltar
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[
@@ -1043,6 +1088,7 @@ useEffect(() => {
                   opacity: (isAccepted || isRejected || isLoading) ? 0.6 : 1,
                   paddingVertical: 12, // Reduced padding
                   borderRadius: 10, // Slightly reduced border radius
+                  flex: hideRejectButton ? 1 : 2, // Ocupa toda a largura se rejeitar estiver oculto
                 }
               ]}
               onPress={handleAccept}
@@ -1117,6 +1163,13 @@ const styles = StyleSheet.create({
     width: 32, // Reduced size
     height: 32, // Reduced size
     borderRadius: 16, // Adjusted for new size
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

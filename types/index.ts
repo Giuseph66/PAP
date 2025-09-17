@@ -207,7 +207,7 @@ export interface AuthUser {
   salt: string;
   role: UserRole;
   nome: string;
-  telefone?: string;
+  telefone: string;
   perfilCompleto?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -225,6 +225,8 @@ export interface AuthUser {
 export interface Session {
   token: string; // random session token
   userId: string; // AuthUser.id
+  nome : string;
+  telefone : string;
   role: UserRole;
   expiresAt: Date;
 }

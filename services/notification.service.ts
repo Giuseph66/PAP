@@ -119,15 +119,17 @@ class NotificationService {
     }
   }
 
-  /**
-   * Atualiza contador de notificações
-   */
+  /**\n   * Atualiza contador de notificações\n   */
   private async updateNotificationCount(shipmentId: string): Promise<void> {
     try {
-      await shipmentFirestoreService.updateShipmentState(shipmentId, 'CREATED', {
-        notificationCount: (await shipmentFirestoreService.getShipmentById(shipmentId))?.notificationCount || 0 + 1,
-        lastNotificationAt: new Date()
-      });
+      const shipment = await shipmentFirestoreService.getShipmentById(shipmentId);
+      if (shipment) {
+        const currentCount = shipment.notificationCount || 0;
+        await shipmentFirestoreService.updateShipmentState(shipmentId, 'CREATED', {
+          notificationCount: currentCount + 1,
+          lastNotificationAt: new Date()
+        });
+      }
     } catch (error) {
       console.error('Error updating notification count:', error);
     }

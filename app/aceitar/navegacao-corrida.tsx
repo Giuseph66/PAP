@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { AbandonRideModal, CallMessageModal } from '@/components/ui/modal';
 import { Colors } from '@/constants/theme';
+import { Translations } from '@/constants/translations';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
 import { getDrivingRoute, LatLng } from '@/services/directions.service';
@@ -81,6 +82,8 @@ export default function RideNavigationScreen() {
   const [isCallModalVisible, setIsCallModalVisible] = useState(false);
   const [isAbandonModalVisible, setIsAbandonModalVisible] = useState(false);
   const [abandonReason, setAbandonReason] = useState('');
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  const [shipmentData, setShipmentData] = useState<any>(null);
 
   // Função para calcular distância entre duas coordenadas (Haversine)
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -97,6 +100,22 @@ export default function RideNavigationScreen() {
   // Função para verificar proximidade (raio de 100 metros)
   const checkProximity = (distance: number): boolean => {
     return distance <= 0.1; // 100 metros = 0.1 km
+  };
+
+  // Função para mapear status da corrida para português
+  const getRideStatusInPortuguese = (status: RideNavigation['status']): string => {
+    switch (status) {
+      case 'navigating_to_pickup':
+        return Translations.ride_status_navigating_to_pickup;
+      case 'arrived_at_pickup':
+        return Translations.ride_status_arrived_at_pickup;
+      case 'navigating_to_destination':
+        return Translations.ride_status_navigating_to_destination;
+      case 'completed':
+        return Translations.ride_status_completed;
+      default:
+        return status;
+    }
   };
 
   // Função para salvar estado da corrida no shipment
@@ -128,10 +147,10 @@ export default function RideNavigationScreen() {
       // Atualiza o shipment com o novo status
       await shipmentFirestoreService.updateShipmentState(ride.id, shipmentStatus as any);
       
-      // Adiciona evento à timeline
+      // Adiciona evento à timeline com descrição em português
       await shipmentFirestoreService.addTimelineEvent(ride.id, {
         tipo: 'RIDE_STATUS_UPDATE',
-        descricao: `Status da corrida atualizado para: ${status}`,
+        descricao: `Status da corrida atualizado para: ${getRideStatusInPortuguese(status)}`,
         payload: {
           rideStatus: status,
           shipmentStatus: shipmentStatus,
@@ -142,6 +161,27 @@ export default function RideNavigationScreen() {
       console.log(`✅ Estado salvo com sucesso: ${shipmentStatus}`);
     } catch (error) {
       console.error('Error saving ride state:', error);
+    }
+  };
+
+  // Função para carregar dados completos do shipment
+  const loadShipmentData = async () => {
+    if (!ride) return;
+    
+    try {
+      console.log('🔄 Carregando dados completos do shipment:', ride.id);
+      const shipment = await shipmentFirestoreService.getShipmentById(ride.id);
+      
+      if (shipment) {
+        setShipmentData(shipment);
+        console.log('✅ Dados do shipment carregados:', {
+          pickupContact: shipment.pickup?.contato,
+          dropoffContact: shipment.dropoff?.contato,
+          clienteName: shipment.clienteName
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar dados do shipment:', error);
     }
   };
 
@@ -321,6 +361,13 @@ export default function RideNavigationScreen() {
     setRide(rideData);
   }, [params.rideId, params.passengerName, params.passengerPhone, params.pickupAddress, params.pickupLat, params.pickupLng, params.destinationAddress, params.destinationLat, params.destinationLng, params.etaToPickup, params.etaToDestination]);
 
+  // Carrega dados completos do shipment quando a corrida estiver pronta
+  useEffect(() => {
+    if (ride) {
+      loadShipmentData();
+    }
+  }, [ride]);
+
   // Carrega estado salvo quando a corrida e courierUid estiverem prontos (apenas uma vez)
   useEffect(() => {
     if (ride && courierUid && isInitialized && !hasLoadedState) {
@@ -373,8 +420,8 @@ export default function RideNavigationScreen() {
     // Verifica se está próximo o suficiente do pickup
     if (!isNearPickup) {
       Alert.alert(
-        'Muito Longe',
-        `Você está a ${distanceToPickup ? (distanceToPickup * 1000).toFixed(0) : 'N/A'} metros do pickup. Aproxime-se mais para confirmar a chegada.`,
+        Translations.too_far_pickup,
+        `Você está a ${distanceToPickup ? (distanceToPickup * 1000).toFixed(0) : 'N/A'} metros da coleta. Aproxime-se mais para confirmar a chegada.`,
         [{ text: 'OK' }]
       );
       return;
@@ -387,8 +434,8 @@ export default function RideNavigationScreen() {
     await saveRideState(newStatus);
     
     Alert.alert(
-      'Chegou ao pickup',
-      'Você chegou ao ponto de retirada. Aguarde o passageiro.',
+      Translations.arrived_pickup_title,
+      Translations.arrived_pickup_message,
       [{ text: 'OK' }]
     );
   };
@@ -428,8 +475,8 @@ export default function RideNavigationScreen() {
     // Verifica se está próximo o suficiente do destino
     if (!isNearDestination) {
       Alert.alert(
-        'Muito Longe',
-        `Você está a ${distanceToDestination ? (distanceToDestination * 1000).toFixed(0) : 'N/A'} metros do destino. Aproxime-se mais para finalizar a corrida.`,
+        Translations.too_far_destination,
+        `Você está a ${distanceToDestination ? (distanceToDestination * 1000).toFixed(0) : 'N/A'} metros da entrega. Aproxime-se mais para finalizar a entrega.`,
         [{ text: 'OK' }]
       );
       return;
@@ -442,8 +489,8 @@ export default function RideNavigationScreen() {
     await saveRideState(newStatus);
     
     Alert.alert(
-      'Corrida Finalizada',
-      'Corrida concluída com sucesso!',
+      Translations.trip_completed_title,
+      Translations.trip_completed_message,
       [
         {
           text: 'OK',
@@ -485,13 +532,62 @@ export default function RideNavigationScreen() {
     setIsAbandonModalVisible(true);
   };
 
+  const handleUpdateLocation = async () => {
+    setIsUpdatingLocation(true);
+    setLocationError(null);
+    
+    try {
+      const location = await locationService.getCurrentLocation();
+      const newLocation: LatLng = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
+      
+      setCurrentLocation(newLocation);
+      setLocationError(null);
+      
+      // Recalcula a rota com a nova localização
+      if (ride) {
+        const calculateRoute = async () => {
+          try {
+            let route;
+            if (ride.status === 'navigating_to_pickup') {
+              route = await getDrivingRoute(newLocation, ride.pickup.coordinates);
+            } else if (ride.status === 'navigating_to_destination') {
+              route = await getDrivingRoute(newLocation, ride.destination.coordinates);
+            }
+            
+            if (route) {
+              setRouteCoords(route.coordinates);
+              setRouteDistance(route.distanceKm);
+              setRouteDuration(route.durationMin);
+              fitToMarkers([newLocation, ride.pickup.coordinates, ride.destination.coordinates]);
+            }
+          } catch (error) {
+            console.error('Error recalculating route:', error);
+          }
+        };
+        
+        calculateRoute();
+      }
+      
+      Alert.alert('Sucesso', 'Localização atualizada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atualizar localização:', error);
+      setLocationError('Não foi possível atualizar sua localização');
+      Alert.alert('Erro', 'Não foi possível atualizar sua localização. Verifique se as permissões estão ativadas.');
+    } finally {
+      setIsUpdatingLocation(false);
+    }
+  };
+
   const handleConfirmAbandonRide = async (reason: string) => {
     if (!ride || !courierUid) return;
     
     try {
       // Salva o motivo do abandono no Firestore e remove o courierUid
       await shipmentFirestoreService.updateShipmentState(ride.id, 'COURIER_ABANDONED' as any, {
-        courierUid: deleteField()
+        courierUid: deleteField() as any
       });
       
       // Adiciona evento à timeline
@@ -523,13 +619,13 @@ export default function RideNavigationScreen() {
     
     switch (ride.status) {
       case 'navigating_to_pickup':
-        return 'Navegando para retirada';
+        return Translations.navigating_to_pickup;
       case 'arrived_at_pickup':
-        return 'Chegou ao pickup';
+        return Translations.arrived_at_pickup;
       case 'navigating_to_destination':
-        return 'Navegando para destino';
+        return Translations.navigating_to_destination;
       case 'completed':
-        return 'Corrida finalizada';
+        return Translations.completed;
       default:
         return '';
     }
@@ -565,8 +661,8 @@ export default function RideNavigationScreen() {
     switch (ride.status) {
       case 'navigating_to_pickup':
         const pickupButtonTitle = isNearPickup 
-          ? "Cheguei ao Pickup" 
-          : `Cheguei ao Pickup (${distanceToPickup ? (distanceToPickup * 1000).toFixed(0) : 'N/A'}m)`;
+          ? Translations.arrived_at_pickup_button 
+          : `${Translations.arrived_at_pickup_button} (${distanceToPickup ? (distanceToPickup * 1000).toFixed(0) : 'N/A'}m)`;
         return (
           <Button
             title={pickupButtonTitle}
@@ -582,7 +678,7 @@ export default function RideNavigationScreen() {
       case 'arrived_at_pickup':
         return (
           <Button
-            title="Iniciar Viagem"
+            title={Translations.start_trip_button}
             onPress={handleStartTrip}
             icon={<MaterialIcons name="play-arrow" size={16} color="#fff" />}
             style={styles.actionButton}
@@ -590,8 +686,8 @@ export default function RideNavigationScreen() {
         );
       case 'navigating_to_destination':
         const destinationButtonTitle = isNearDestination 
-          ? "Finalizar Corrida" 
-          : `Finalizar Corrida (${distanceToDestination ? (distanceToDestination * 1000).toFixed(0) : 'N/A'}m)`;
+          ? Translations.complete_trip_button 
+          : `${Translations.complete_trip_button} (${distanceToDestination ? (distanceToDestination * 1000).toFixed(0) : 'N/A'}m)`;
         return (
           <Button
             title={destinationButtonTitle}
@@ -719,17 +815,17 @@ export default function RideNavigationScreen() {
         <View style={styles.statusSection}>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
             <Text style={styles.statusText}>
-              {ride.status === 'navigating_to_pickup' ? 'PICKUP' :
-               ride.status === 'arrived_at_pickup' ? 'AGUARDANDO' :
-               ride.status === 'navigating_to_destination' ? 'VIAGEM' : 'FINALIZADA'}
+              {ride.status === 'navigating_to_pickup' ? Translations.pickup_badge :
+               ride.status === 'arrived_at_pickup' ? Translations.waiting_badge :
+               ride.status === 'navigating_to_destination' ? Translations.delivery_badge : Translations.completed_badge}
             </Text>
           </View>
           
           <View style={styles.etaContainer}>
             <Text style={[styles.etaLabel, { color: colors.tabIconDefault }]}>
-              {ride.status === 'navigating_to_pickup' ? 'INDO para pickup:' :
-               ride.status === 'arrived_at_pickup' ? 'Aguardando passageiro' :
-               ride.status === 'navigating_to_destination' ? 'INDO para destino:' : 'Corrida finalizada'}
+              {ride.status === 'navigating_to_pickup' ? Translations.going_to_pickup :
+               ride.status === 'arrived_at_pickup' ? Translations.waiting_for_pickup :
+               ride.status === 'navigating_to_destination' ? Translations.going_to_destination : Translations.trip_completed}
             </Text>
             <Text style={[styles.etaValue, { color: colors.text }]}>
               {ride.status === 'navigating_to_pickup' ? `${ride.eta.toPickup} min` :
@@ -749,7 +845,7 @@ export default function RideNavigationScreen() {
                 marginTop: 4,
                 fontWeight: '600'
               }]}>
-                {isNearPickup ? '✅ Próximo do pickup' : `📍 ${(distanceToPickup * 1000).toFixed(0)}m do pickup`}
+                {isNearPickup ? Translations.near_pickup : `📍 ${(distanceToPickup * 1000).toFixed(0)}${Translations.distance_to_pickup}`}
               </Text>
             )}
             
@@ -759,7 +855,7 @@ export default function RideNavigationScreen() {
                 marginTop: 4,
                 fontWeight: '600'
               }]}>
-                {isNearDestination ? '✅ Próximo do destino' : `📍 ${(distanceToDestination * 1000).toFixed(0)}m do destino`}
+                {isNearDestination ? Translations.near_destination : `📍 ${(distanceToDestination * 1000).toFixed(0)}${Translations.distance_to_destination}`}
               </Text>
             )}
           </View>
@@ -773,11 +869,21 @@ export default function RideNavigationScreen() {
             </View>
             <View style={styles.addressText}>
               <Text style={[styles.addressTitle, { color: colors.text }]}>
-                Retirada
+                {Translations.pickup_label}
               </Text>
+              {shipmentData?.pickup?.contato && (
+                <Text style={[styles.contactName, { color: colors.tint }]}>
+                  👤 {shipmentData.pickup.contato}
+                </Text>
+              )}
               <Text style={[styles.addressContent, { color: colors.tabIconDefault }]}>
                 {ride.pickup.address}
               </Text>
+              {shipmentData?.pickup?.instrucoes && (
+                <Text style={[styles.instructions, { color: colors.tabIconDefault }]}>
+                  📝 {shipmentData.pickup.instrucoes}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -787,11 +893,21 @@ export default function RideNavigationScreen() {
             </View>
             <View style={styles.addressText}>
               <Text style={[styles.addressTitle, { color: colors.text }]}>
-                Destino
+                {Translations.destination_label}
               </Text>
+              {shipmentData?.dropoff?.contato && (
+                <Text style={[styles.contactName, { color: colors.tint }]}>
+                  👤 {shipmentData.dropoff.contato}
+                </Text>
+              )}
               <Text style={[styles.addressContent, { color: colors.tabIconDefault }]}>
                 {ride.destination.address}
               </Text>
+              {shipmentData?.dropoff?.instrucoes && (
+                <Text style={[styles.instructions, { color: colors.tabIconDefault }]}>
+                  📝 {shipmentData.dropoff.instrucoes}
+                </Text>
+              )}
             </View>
           </View>
         </View>
@@ -799,6 +915,23 @@ export default function RideNavigationScreen() {
         {/* Botão de ação */}
         {getActionButton()}
       </View>
+
+      {/* Botão flutuante para atualizar localização */}
+      <TouchableOpacity 
+        style={[
+          styles.floatingLocationButton, 
+          { backgroundColor: colors.tint },
+          isUpdatingLocation && styles.floatingLocationButtonDisabled
+        ]}
+        onPress={handleUpdateLocation}
+        disabled={isUpdatingLocation}
+      >
+        <MaterialIcons 
+          name={isUpdatingLocation ? "refresh" : "my-location"} 
+          size={28} 
+          color="#fff" 
+        />
+      </TouchableOpacity>
       
       {/* Modal de chamada/mensagem */}
       <CallMessageModal
@@ -861,6 +994,25 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  floatingLocationButton: {
+    position: 'absolute',
+    top: 120,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  floatingLocationButtonDisabled: {
+    opacity: 0.6,
   },
   contactButton: {
     width: 44,
@@ -942,6 +1094,17 @@ const styles = StyleSheet.create({
   addressContent: {
     fontSize: 16,
     lineHeight: 22,
+  },
+  contactName: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  instructions: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
+    lineHeight: 16,
   },
   actionButton: {
     marginTop: 0,
