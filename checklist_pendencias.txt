@@ -1,0 +1,129 @@
+================================================================================
+                            CHECKLIST DE PENDÊNCIAS - SISTEMA DE ENTREGAS
+================================================================================
+
+Pontos críticos identificados para implementação imediata e melhorias necessárias.
+
+--------------------------------------------------------------------------------
+🔔 SISTEMA DE NOTIFICAÇÕES EM SEGUNDO PLANO
+--------------------------------------------------------------------------------
+
+📱 NOTIFICAÇÕES PUSH AVANÇADAS:
+   - Notificações funcionam mesmo com app fechado
+   - Background processing para notificações em tempo real
+   - Notificações visuais detalhadas com imagens/ícones customizados
+   - Categorização de notificações (novas entregas, atualizações de status, mensagens)
+   - Som personalizado para diferentes tipos de notificação
+   - Badge counter no ícone do app
+
+🚚 NOTIFICAÇÕES PARA ENTREGADORES ONLINE:
+   - Alertas quando novas entregas aparecem na área
+   - Notificações de ofertas concorrentes
+   - Alertas de proximidade de pickup/delivery
+   - Notificações de mudanças de status de corrida
+   - Push notifications com ações rápidas (aceitar/rejeitar)
+
+🎯 DETALHES TÉCNICOS:
+   - Integração com Firebase Cloud Messaging (FCM)
+   - Background tasks para processamento offline
+   - Local notifications para eventos locais
+   - Grouping de notificações relacionadas
+   - Persistência de notificações importantes
+
+--------------------------------------------------------------------------------
+👑 MELHORIAS NO PAINEL ADMINISTRATIVO
+--------------------------------------------------------------------------------
+
+🔧 FUNCIONALIDADES FALTANDO:
+   - Gestão completa de usuários (ativar/desativar contas)
+   - Controle de permissões por função
+   - Logs de auditoria de todas as ações críticas
+   - Dashboard de métricas em tempo real
+   - Gestão de configurações globais do sistema
+   - Controle de zonas de entrega e restrições
+   - Sistema de suporte interno para usuários
+   - Relatórios avançados de performance
+
+📊 DASHBOARD ADMIN:
+   - Métricas de negócio (receita, entregas, usuários ativos)
+   - Gráficos de tendências e KPIs
+   - Alertas automáticos de problemas
+   - Controle de manutenções programadas
+   - Gestão de promoções e descontos
+
+--------------------------------------------------------------------------------
+🔙 CORREÇÃO DE BUG DE NAVEGAÇÃO
+--------------------------------------------------------------------------------
+
+🐛 PROBLEMA IDENTIFICADO:
+   - Ao clicar em voltar na última tela do fluxo home
+   - Sistema redireciona incorretamente para tela financeira da empresa
+   - Deve voltar para tela anterior correta ou tela inicial
+
+🔧 SOLUÇÃO NECESSÁRIA:
+   - Corrigir lógica de navegação no stack
+   - Implementar proper back button handling
+   - Verificar rota de fallback adequada
+   - Testar todos os caminhos de navegação
+
+--------------------------------------------------------------------------------
+📦 SISTEMA DE VERSIONAMENTO E MANUTENÇÃO
+--------------------------------------------------------------------------------
+
+🔢 CONTROLE DE VERSÃO:
+   - Versionamento semântico (major.minor.patch)
+   - Controle de versão atual no banco de dados
+   - Comparação automática de versões no login
+   - Display de versão no app e configurações
+
+⚡ ATUALIZAÇÕES OBRIGATÓRIAS:
+   - Flag para atualização obrigatória vs opcional
+   - Bloqueio de funcionalidades em versões desatualizadas
+   - Forçar atualização antes de permitir uso do app
+   - Mensagens claras sobre necessidade de atualização
+
+🔧 MODO DE MANUTENÇÃO:
+   - Toggle global de manutenção no admin
+   - Bloqueio total do app quando em manutenção
+   - Tela de manutenção com mensagem personalizada
+   - Timer de manutenção programada
+   - Notificações push sobre manutenções
+
+🎯 ITENS OBRIGATÓRIOS:
+   - Verificação de versão em todo login
+   - Verificação de status de manutenção
+   - Cache de configurações críticas
+   - Fallback para modo offline limitado durante manutenção
+
+--------------------------------------------------------------------------------
+📋 CHECKLIST DE IMPLEMENTAÇÃO
+--------------------------------------------------------------------------------
+
+PRIORIDADE ALTA (Implementar Imediatamente):
+□ Sistema de notificações push completo
+□ Correção do bug de navegação
+□ Sistema básico de versionamento
+
+PRIORIDADE MÉDIA (Próximas 2 semanas):
+□ Melhorias no painel administrativo
+□ Sistema avançado de manutenção
+□ Notificações detalhadas para entregadores
+
+PRIORIDADE BAIXA (Próximo mês):
+□ Funcionalidades avançadas de admin
+□ Métricas e dashboards adicionais
+□ Melhorias de UX em notificações
+
+--------------------------------------------------------------------------------
+📅 ESTIMATIVA DE TEMPO
+--------------------------------------------------------------------------------
+
+- Sistema de notificações: 2-3 dias
+- Correção navegação: 1 dia
+- Versionamento básico: 1-2 dias
+- Melhorias admin: 3-4 dias
+- Sistema manutenção: 2 dias
+
+TOTAL ESTIMADO: 9-12 dias de desenvolvimento
+
+================================================================================

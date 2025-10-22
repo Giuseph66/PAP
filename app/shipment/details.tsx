@@ -110,6 +110,8 @@ export default function ShipmentDetailsScreen() {
         lastNotificationAt: shipmentData.lastNotificationAt,
         city: shipmentData.city,
         rejectionCount: shipmentData.rejectionCount,
+        paymentPaid: (shipmentData as any).paymentPaid,
+        deliveryToken: (shipmentData as any).deliveryToken,
         };
         
         setShipment(shipment);
@@ -222,6 +224,13 @@ export default function ShipmentDetailsScreen() {
   const handlePayNow = () => {
     // Navigate to payment screen with shipment ID
     router.push(`/payment/confirm?id=${shipment?.id}`);
+  };
+
+  // Função para determinar se o botão de pagamento deve aparecer
+  const shouldShowPaymentButton = (): boolean => {
+    if (!shipment) return false;
+    // Usa apenas a flag independente
+    return shipment.paymentPaid !== true;
   };
 
   const handleAcceptOffer = async () => {
@@ -358,7 +367,8 @@ export default function ShipmentDetailsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header with status */}
         <Card style={styles.statusCard}>
-          <View style={styles.statusHeader}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <MaterialIcons 
               name="info" 
               size={24} 
@@ -367,6 +377,15 @@ export default function ShipmentDetailsScreen() {
             <Text style={[styles.statusTitle, { color: colors.text }]}>
               Status do Envio
             </Text>
+            </View>
+            {shipment.paymentPaid && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end'}}>
+              <MaterialIcons name="check-circle" size={16} color="#10b981" />
+              <Text style={[styles.paymentPaid, { color: "#10b981", marginLeft: 4 }]}>
+                Pago
+              </Text>
+              </View>
+            )}
           </View>
           <Text style={[styles.statusValue, { color: stateColors[shipment.state] }]}>
             {stateLabels[shipment.state]}
@@ -794,16 +813,68 @@ export default function ShipmentDetailsScreen() {
         )}
       </ScrollView>
       
-      {/* Sticky payment button */}
-      <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-        <Button
-          title={`Pagar Agora - ${formatPrice(priceBreakdown?.total || shipment.quote.preco)}`}
-          onPress={handlePayNow}
-          size="lg"
-          fullWidth
-          style={styles.payButton}
-        />
-      </View>
+      {/* Sticky payment button - só aparece quando necessário */}
+      {shouldShowPaymentButton() && !shipment.paymentPaid && (
+        <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+          <Button
+            title={`Pagar Agora - ${formatPrice(priceBreakdown?.total || shipment.quote.preco)}`}
+            onPress={handlePayNow}
+            size="lg"
+            fullWidth
+            style={styles.payButton}
+          />
+        </View>
+      )}
+      
+      {/* Mensagem informativa quando pagamento não é necessário ou já foi pago */}
+      {!shouldShowPaymentButton() && shipment && (
+        <View style={[styles.stickyFooter, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+          {shipment.paymentPaid ? (
+            // Pagamento confirmado - permite ir para QR scanner
+            <View style={[styles.paymentStatusMessage, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: '#10b981' }]}>
+              <MaterialIcons
+                name="check-circle"
+                size={24}
+                color="#10b981"
+              />
+              <Text style={[styles.paymentStatusText, { color: colors.text }]}>
+                Pagamento confirmado
+                </Text>
+                {shipment.state === 'DELIVERED' ? (
+                  <Text style={[styles.paymentStatusText, { color: colors.text }]}>
+                    Código de entrega: {shipment.deliveryToken}
+                  </Text>
+                ) : ( 
+                  <Button
+                    title="Gerar Código"
+                    onPress={() => router.push(`/confirmacao/qr-display?id=${shipment.id}`)}
+                    size="sm"
+                    style={styles.qrButton}
+                  />
+                )}
+            </View>
+          ) : (
+            // Outros estados sem pagamento necessário
+            <View style={[styles.paymentStatusMessage, { backgroundColor: shipment.state === 'PAID' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)' }]}>
+              <MaterialIcons
+                name={shipment.state === 'PAID' ? 'check-circle' : 'info'}
+                size={24}
+                color={shipment.state === 'PAID' ? '#10b981' : colors.tabIconDefault}
+              />
+              <Text style={[styles.paymentStatusText, { color: colors.text }]}>
+                {shipment.state === 'PAID'
+                  ? 'Pagamento realizado com sucesso'
+                  : shipment.state === 'CANCELLED'
+                  ? 'Envio cancelado'
+                  : shipment.state === 'DELIVERED'
+                  ? 'Envio finalizado'
+                  : 'Pagamento não necessário neste momento'
+                }
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -985,6 +1056,21 @@ const styles = StyleSheet.create({
   payButton: {
     marginBottom: 0,
   },
+  paymentStatusMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  paymentStatusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 12,
+    flex: 1,
+    textAlign: 'center',
+  },
   // Estilos para ofertas
   offerCard: {
     marginBottom: 20,
@@ -1111,5 +1197,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
     fontWeight: '500',
+  },
+  paymentPaidContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  paymentPaid: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  qrButton: {
+    marginLeft: 8,
+    backgroundColor: '#10b981',
   },
 });

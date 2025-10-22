@@ -11,6 +11,7 @@ import { shipmentFirestoreService } from '@/services/shipment-firestore.service'
 import { Shipment } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -70,6 +71,7 @@ export default function CourierShipmentsScreen() {
         state: doc.state,
         courierUid: doc.courierUid,
         etaMin: doc.etaMin,
+        paymentPaid: doc.paymentPaid,
         timeline: doc.timeline,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
@@ -112,7 +114,7 @@ export default function CourierShipmentsScreen() {
       // Query para escutar envios disponíveis
       const q = query(
         collection(firestore, 'shipments'),
-        where('state', '==', 'CREATED')
+        where('state', 'in', ['CREATED', 'COUNTER_OFFER', 'ACCEPTED_OFFER', 'COURIER_ABANDONED','PAID'])
         // Removido orderBy para evitar necessidade de índice composto
       );
       
@@ -211,10 +213,26 @@ export default function CourierShipmentsScreen() {
     }
   };
 
+  // Carrega status online salvo ao iniciar
+  useEffect(() => {
+    const loadSavedStatus = async () => {
+      try {
+        const savedStatus = await SecureStore.getItemAsync('courier_online_status');
+        if (savedStatus) {
+          setOnlineStatus(savedStatus as 'online' | 'offline');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar status salvo:', error);
+      }
+    };
+
+    loadSavedStatus();
+  }, []);
+
   useEffect(() => {
     loadShipments();
     setupRealtimeListener();
-    
+
     // Cleanup listener on unmount
     return () => {
       if (unsubscribeRef.current) {
@@ -274,17 +292,28 @@ export default function CourierShipmentsScreen() {
           shipmentId: shipment.id,
           passengerName: shipment.clienteName,
           passengerPhone: shipment.clientePhone,
+          paymentPaid: shipment.paymentPaid?.toString() || 'false',
           pickupAddress: shipment.pickup.endereco,
           pickupLat: shipment.pickup.lat.toString(),
           pickupLng: shipment.pickup.lng.toString(),
           destinationAddress: shipment.dropoff.endereco,
           destinationLat: shipment.dropoff.lat.toString(),
           destinationLng: shipment.dropoff.lng.toString(),
-          etaMin: shipment.etaMin?.toString() || '15',
-          packageValue: shipment.pacote.valorDeclarado.toString(),
-          packageName: `Pacote (${shipment.pacote.pesoKg}kg)`,
-          originalPrice: shipment.quote.preco.toString(),
-          hideReject: 'true' // Parâmetro para ocultar botão de rejeitar
+          // Pricing
+          pricingBase: '0',
+          pricingDistance: shipment.quote.preco.toString(),
+          pricingDuration: '0',
+          pricingSurge: '1',
+          pricingTotal: shipment.quote.preco.toString(),
+          // Metrics
+          metricsDistanceToPickup: '0',
+          metricsTimeToPickup: (shipment.etaMin || 15).toString(),
+          metricsEstimatedDuration: shipment.quote.tempoMin.toString(),
+          // Payment
+          paymentMethod: 'card',
+          paymentCategory: 'Entrega',
+          // Flags
+          hideReject: 'true',
         }
       });
       
@@ -295,9 +324,18 @@ export default function CourierShipmentsScreen() {
   };
 
 
-  const toggleOnlineStatus = () => {
-    setOnlineStatus(prev => prev === 'online' ? 'offline' : 'online');
-    // TODO: Implement actual online status update in backend
+  const toggleOnlineStatus = async () => {
+    try {
+      // Salva o status no SecureStore (persistente)
+      const newStatus = onlineStatus === 'online' ? 'offline' : 'online';
+      await SecureStore.setItemAsync('courier_online_status', newStatus);
+      setOnlineStatus(newStatus);
+
+      // TODO: Implement actual online status update in backend
+      console.log(`Status alterado para: ${newStatus}`);
+    } catch (error) {
+      console.error('Erro ao salvar status online:', error);
+    }
   };
 
   if (isLoading) {

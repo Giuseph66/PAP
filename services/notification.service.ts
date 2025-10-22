@@ -1,17 +1,22 @@
 import { Shipment } from '@/types';
 import { router } from 'expo-router';
 import { authService } from './auth.service';
+import { localNotificationService } from './local-notification.service';
 import { shipmentFirestoreService } from './shipment-firestore.service';
+import { systemConfigService } from './system-config.service';
 
 class NotificationService {
   private notificationQueue: string[] = []; // IDs de envios já notificados
-  private maxNotifications = 3; // Máximo de notificações por envio
-  private notificationCooldown = 30000; // 30 segundos entre notificações
 
   /**
    * Verifica se deve notificar sobre um novo envio
    */
   shouldNotify(shipment: Shipment, courierCity: string): boolean {
+    // Get notification configuration from system config service
+    const config = systemConfigService.getNotificationConfig();
+    const maxNotifications = config.maxNotificationCount;
+    const notificationCooldown = config.notificationCooldownMinutes * 60 * 1000; // Convert to milliseconds
+
     // Verifica se o envio está disponível
     if (shipment.state !== 'CREATED' && shipment.state !== 'COUNTER_OFFER' && shipment.state !== 'COURIER_ABANDONED') {
       return false;
@@ -23,14 +28,14 @@ class NotificationService {
     }
 
     // Verifica se já foi notificado muitas vezes
-    if ((shipment.notificationCount || 0) >= this.maxNotifications) {
+    if ((shipment.notificationCount || 0) >= maxNotifications) {
       return false;
     }
 
     // Verifica cooldown
     if (shipment.lastNotificationAt) {
       const timeSinceLastNotification = Date.now() - shipment.lastNotificationAt.getTime();
-      if (timeSinceLastNotification < this.notificationCooldown) {
+      if (timeSinceLastNotification < notificationCooldown) {
         return false;
       }
     }
@@ -56,6 +61,13 @@ class NotificationService {
       // Adiciona à fila de notificações
       this.notificationQueue.push(shipment.id);
 
+      // Notificação local
+      await localNotificationService.sendNow(
+        'Novo envio disponível',
+        `${shipment.pickup.endereco} → ${shipment.dropoff.endereco} • ${shipment.quote.preco.toFixed(2)}`,
+        { shipmentId: shipment.id }
+      );
+
       this.openShipmentDetails(shipment);
       // Atualiza contador de notificações
       await this.updateNotificationCount(shipment.id);
@@ -75,9 +87,8 @@ class NotificationService {
         pathname: '/aceitar/aceitar-corrida',
         params: {
           shipmentId: shipment.id,
-          // Converte dados do envio para formato da tela de corrida
           passengerName: shipment.pickup.contato,
-          passengerPhone: shipment.pickup.instrucoes, // Usar instruções como telefone temporariamente
+          passengerPhone: shipment.pickup.instrucoes,
           pickupAddress: shipment.pickup.endereco,
           pickupLat: shipment.pickup.lat.toString(),
           pickupLng: shipment.pickup.lng.toString(),

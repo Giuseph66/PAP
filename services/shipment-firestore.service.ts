@@ -22,6 +22,11 @@ export interface CreateShipmentData {
   pacote: Package;
   quote: Quote;
   state: ShipmentState;
+  /** Pagamento efetuado (flag independente do estado) */
+  paymentPaid?: boolean;
+  /** Token de confirmação de entrega */
+  deliveryToken?: string;
+  deliveryTokenGeneratedAt?: Date;
   courierUid?: string;
   etaMin?: number;
   timeline: TimelineEvent[];
@@ -97,6 +102,21 @@ class ShipmentFirestoreService {
     }
   }
 
+  /** Atualiza campos arbitrários do envio (sem tocar no state) */
+  async updateShipmentFields(shipmentId: string, fields: Partial<CreateShipmentData & { paymentPaid?: boolean; paymentIntent?: any }>): Promise<void> {
+    try {
+      const shipmentRef = doc(firestore, this.collectionName, shipmentId);
+      const updateData: any = {
+        ...fields,
+        updatedAt: Timestamp.fromDate(new Date()),
+      };
+      await updateDoc(shipmentRef, updateData);
+    } catch (error) {
+      console.error('Error updating shipment fields:', error);
+      throw new Error('Falha ao atualizar dados do envio');
+    }
+  }
+
   /**
    * Atualiza o contador de rejeições de um envio
    */
@@ -132,6 +152,7 @@ class ShipmentFirestoreService {
         ...data,
         createdAt: data.createdAt.toDate(),
         updatedAt: data.updatedAt.toDate(),
+        paymentPaid: data.paymentPaid,
         timeline: data.timeline.map((event: any) => ({
           ...event,
           timestamp: event.timestamp.toDate()
@@ -160,6 +181,9 @@ class ShipmentFirestoreService {
    */
   async getShipmentsByClient(clienteUid: string, limitCount: number = 50): Promise<ShipmentDocument[]> {
     try {
+      if (!clienteUid || clienteUid.trim() === '') {
+        return [];
+      }
       // Query simplificada sem orderBy para evitar necessidade de índice composto
       const q = query(
         collection(firestore, this.collectionName),

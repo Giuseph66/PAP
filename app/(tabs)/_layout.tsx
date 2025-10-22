@@ -88,7 +88,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="cliente/company-finance"
         options={{
-          title: 'Ganhos',
+          title: 'Gastos',
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="attach-money" size={focused ? 26 : 24} color={color} />
           ),
@@ -124,7 +124,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="local-shipping" size={focused ? 26 : 24} color={color} />
           ),
-          href: userRole === 'courier' ? '/courier/courier-shipments' : null,
+          href: userRole === 'courier' ? '/courier/courier-home' : null,
         }}
       />
       <Tabs.Screen

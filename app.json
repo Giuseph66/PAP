@@ -28,7 +28,8 @@
         "googleMaps": {
           "apiKey": "AIzaSyApkh47cDCfqWyGZ2izRglGwbzSx849S70"
         }
-      }
+      },
+      "permissions": ["POST_NOTIFICATIONS"]
     },
     "web": {
       "output": "static",
@@ -49,7 +50,22 @@
         }
       ],
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icons/base.png",
+          "color": "#1a1a2e",
+          "androidMode": "default",
+          "androidCollapsedTitle": "Novas notificações"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan QR codes."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -4,7 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { authService } from '@/services/auth.service';
+import { courierStatsService } from '@/services/courier-stats.service';
+import { payoutService } from '@/services/payout.service';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -45,152 +49,7 @@ interface CourierFinancialStats {
   payoutHistory: { date: Date; amount: number; status: string }[];
 }
 
-// Dados mock para demonstração
-const mockTransactions: CourierTransaction[] = [
-  {
-    id: 'txn_001',
-    type: 'income',
-    amount: 15.50,
-    description: 'Entrega - Rua Augusta → Av. Paulista',
-    category: 'Entrega',
-    status: 'completed',
-    date: new Date('2024-01-15T18:30:00'),
-    referenceId: 'del_123',
-    paymentMethod: 'PIX',
-    rating: 5,
-  },
-  {
-    id: 'txn_002',
-    type: 'income',
-    amount: 12.00,
-    description: 'Entrega - Centro → Consolação',
-    category: 'Entrega',
-    status: 'completed',
-    date: new Date('2024-01-15T17:45:00'),
-    referenceId: 'del_124',
-    paymentMethod: 'PIX',
-    rating: 4,
-  },
-  {
-    id: 'txn_003',
-    type: 'payout',
-    amount: -200.00,
-    description: 'Saque PIX - Conta corrente',
-    category: 'Saque',
-    status: 'completed',
-    date: new Date('2024-01-14T10:00:00'),
-    paymentMethod: 'PIX',
-  },
-  {
-    id: 'txn_004',
-    type: 'income',
-    amount: 18.75,
-    description: 'Entrega - Vila Olímpia → Jardins',
-    category: 'Entrega',
-    status: 'pending',
-    date: new Date('2024-01-15T16:20:00'),
-    referenceId: 'del_125',
-    paymentMethod: 'PIX',
-    rating: 5,
-  },
-  {
-    id: 'txn_005',
-    type: 'income',
-    amount: 14.25,
-    description: 'Entrega - Moema → Brooklin',
-    category: 'Entrega',
-    status: 'completed',
-    date: new Date('2024-01-15T15:10:00'),
-    referenceId: 'del_126',
-    paymentMethod: 'PIX',
-    rating: 5,
-  },
-  {
-    id: 'txn_006',
-    type: 'payout',
-    amount: -150.00,
-    description: 'Saque PIX - Conta poupança',
-    category: 'Saque',
-    status: 'processing',
-    date: new Date('2024-01-10T09:30:00'),
-    paymentMethod: 'PIX',
-  },
-  {
-    id: 'txn_007',
-    type: 'bonus',
-    amount: 5.00,
-    description: 'Bônus por entrega expressa',
-    category: 'Bônus',
-    status: 'completed',
-    date: new Date('2024-01-15T14:00:00'),
-    referenceId: 'del_122',
-    paymentMethod: 'PIX',
-  },
-  {
-    id: 'txn_008',
-    type: 'income',
-    amount: 16.50,
-    description: 'Entrega - Pinheiros → Perdizes',
-    category: 'Entrega',
-    status: 'completed',
-    date: new Date('2024-01-15T13:15:00'),
-    referenceId: 'del_121',
-    paymentMethod: 'PIX',
-    rating: 4,
-  },
-  {
-    id: 'txn_009',
-    type: 'adjustment',
-    amount: -2.00,
-    description: 'Ajuste por problema na entrega',
-    category: 'Ajuste',
-    status: 'completed',
-    date: new Date('2024-01-14T16:30:00'),
-    referenceId: 'del_119',
-    paymentMethod: 'PIX',
-  },
-  {
-    id: 'txn_010',
-    type: 'income',
-    amount: 13.75,
-    description: 'Entrega - Santana → Tatuapé',
-    category: 'Entrega',
-    status: 'pending',
-    date: new Date('2024-01-15T12:45:00'),
-    referenceId: 'del_120',
-    paymentMethod: 'PIX',
-    rating: 5,
-  },
-];
-
-const mockStats: CourierFinancialStats = {
-  totalEarnings: 1250.50,
-  pendingPayments: 45.50,
-  totalPayouts: 320.50,
-  availableBalance: 450.30,
-  avgEarningsPerDelivery: 18.20,
-  monthlyTrend: 12.5,
-  transactionsCount: 23,
-  topEarningHours: [
-    { hour: '12:00', earnings: 85.50 },
-    { hour: '18:00', earnings: 92.25 },
-    { hour: '13:00', earnings: 78.00 },
-    { hour: '19:00', earnings: 65.75 },
-  ],
-  weeklyEarnings: [
-    { week: 'Sem 1', earnings: 420.50 },
-    { week: 'Sem 2', earnings: 580.25 },
-    { week: 'Sem 3', earnings: 610.75 },
-    { week: 'Sem 4', earnings: 540.00 },
-    { week: 'Atual', earnings: 695.50 },
-  ],
-  payoutHistory: [
-    { date: new Date('2024-01-14'), amount: -200.00, status: 'completed' },
-    { date: new Date('2024-01-10'), amount: -150.00, status: 'processing' },
-    { date: new Date('2023-12-28'), amount: -300.00, status: 'completed' },
-    { date: new Date('2023-12-15'), amount: -250.00, status: 'completed' },
-  ],
-};
+// Dados reais: preenchidos via courierStatsService
 
 const periodFilters = [
   { key: 'today', label: 'Hoje' },
@@ -252,14 +111,91 @@ export default function CourierFinanceScreen() {
     }
     
     try {
-      // Simular chamada API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setTransactions(mockTransactions);
-      setStats(mockStats);
-      
+      const session = await authService.getSession();
+      if (!session?.userId) throw new Error('Usuário não autenticado');
+
+      const [txnsDTO, finDTO, availableBalanceReais, payouts] = await Promise.all([
+        courierStatsService.getCourierTransactions(session.userId),
+        courierStatsService.getCourierFinancialStats(session.userId),
+        payoutService.getAvailableBalance(session.userId),
+        payoutService.getPayoutsByCourier(session.userId),
+      ]);
+
+      // Mapear transações de entregas
+      const realTransactions: CourierTransaction[] = txnsDTO.map((t) => ({
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        category: 'Entrega',
+        status: t.status,
+        date: t.date,
+        referenceId: t.referenceId,
+        paymentMethod: t.paymentMethod,
+      }));
+
+      // Mapear saques retornados pelo payoutService
+      const mapPayoutStatus = (s: string): 'completed' | 'pending' | 'processing' | 'failed' => {
+        switch (s) {
+          case 'APPROVED': return 'completed';
+          case 'PENDING': return 'pending';
+          case 'PROCESSING': return 'processing';
+          case 'FAILED':
+          case 'CANCELLED':
+            return 'failed';
+          default: return 'pending';
+        }
+      };
+
+      const payoutTransactions: CourierTransaction[] = (payouts || []).map((p) => ({
+        id: p.id,
+        type: 'payout',
+        amount: p.valor || 0,
+        description: 'Saque solicitado via PIX',
+        category: 'Saque',
+        status: mapPayoutStatus(p.status as string),
+        date: p.createdAt || new Date(),
+        referenceId: p.id,
+        paymentMethod: 'PIX',
+        notes: p.nomeTitular ? `Titular: ${p.nomeTitular}` : undefined,
+      }));
+
+      // Mesclar transações, evitando duplicatas por id
+      const txnById = new Map<string, CourierTransaction>();
+      [...realTransactions, ...payoutTransactions].forEach((tx) => {
+        if (!txnById.has(tx.id)) txnById.set(tx.id, tx);
+      });
+      const mergedTransactions = Array.from(txnById.values());
+
+      // Calcular total de saques (aprovados)
+      const totalPayouts = (payouts || [])
+        .filter((p) => p.status === 'APPROVED')
+        .reduce((sum, p) => sum + ((p.valor as number) || 0), 0);
+
+      const payoutHistory = (payouts || []).map((p) => ({
+        date: p.createdAt || new Date(),
+        amount: p.valor || 0,
+        status: mapPayoutStatus(p.status as string),
+      }));
+
+      const realStats: CourierFinancialStats = {
+        totalEarnings: finDTO.totalEarnings,
+        pendingPayments: finDTO.pendingPayments,
+        totalPayouts: +totalPayouts.toFixed(2),
+        availableBalance: +availableBalanceReais.toFixed(2),
+        avgEarningsPerDelivery: finDTO.avgEarningsPerDelivery,
+        monthlyTrend: finDTO.monthlyTrend,
+        transactionsCount: finDTO.transactionsCount,
+        topEarningHours: finDTO.topEarningHours,
+        weeklyEarnings: finDTO.weeklyEarnings,
+        payoutHistory,
+      };
+
+      setTransactions(mergedTransactions);
+      setStats(realStats);
+
       // Aplicar filtros iniciais
-      applyFilters(mockTransactions, 'month', 'all', 'all', '');
+      applyFilters(mergedTransactions, 'month', 'all', 'all', '');
     } catch (error) {
       console.error('Error loading financial data:', error);
       Alert.alert('Erro', 'Falha ao carregar dados financeiros');
@@ -412,36 +348,78 @@ export default function CourierFinanceScreen() {
   };
 
   const handleWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+    const amount = parseFloat(withdrawAmount);
+    if (!withdrawAmount || isNaN(amount) || amount <= 0) {
       Alert.alert('Validação', 'Informe um valor válido para saque');
       return;
     }
-    
     if (!withdrawPixKey) {
       Alert.alert('Validação', 'Informe sua chave PIX');
       return;
     }
-    
-    if (parseFloat(withdrawAmount) > (stats?.availableBalance || 0)) {
+    if (amount > (stats?.availableBalance || 0)) {
       Alert.alert('Validação', 'Valor de saque superior ao saldo disponível');
       return;
     }
-    
+
     setWithdrawLoading(true);
     try {
-      // Simular requisição de saque
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const session = await authService.getSession();
+      if (!session?.userId) throw new Error('Usuário não autenticado');
+
+      const user = await authService.getUserById(session.userId);
+      const nomeTitular = user?.nome || '—';
+
+      // Cria o pedido de saque (valores em REAIS)
+      const payout = await payoutService.createPayoutRequest(
+        session.userId,
+        +amount.toFixed(2),
+        withdrawPixKey,
+        nomeTitular,
+        false
+      );
+
+      // Atualiza saldo disponível localmente (otimista)
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              availableBalance: Math.max(0, +(prev.availableBalance - amount).toFixed(2)),
+              payoutHistory: [
+                { date: new Date(), amount: amount, status: 'PENDING' },
+                ...prev.payoutHistory,
+              ],
+            }
+          : prev
+      );
+
+      // Insere transação de retirada
+      const newTxn: CourierTransaction = {
+        id: payout.id || Math.random().toString(36).slice(2),
+        type: 'payout',
+        amount: amount,
+        description: 'Saque solicitado via PIX',
+        category: 'Saque',
+        status: 'pending',
+        date: new Date(),
+        referenceId: payout.id,
+        paymentMethod: 'PIX',
+        notes: `Chave PIX: ${withdrawPixKey}`,
+      };
+      setTransactions((prev) => [newTxn, ...prev]);
+      applyFilters([newTxn, ...transactions], activePeriod, activeCategory, activeStatus, searchQuery);
+
       Alert.alert(
-        'Saque Solicitado', 
-        `Saque de ${formatCurrency(parseFloat(withdrawAmount))} solicitado com sucesso!
-Será processado em até 1 dia útil.`,
+        'Saque Solicitado',
+        `Saque de ${formatCurrency(amount)} solicitado com sucesso!\nSerá processado após aprovação do administrador.`,
         [{ text: 'OK', onPress: () => setShowWithdrawModal(false) }]
       );
-      
+
       // Resetar formulário
       setWithdrawAmount('');
       setWithdrawPixKey('');
     } catch (error) {
+      console.error('Error requesting withdraw:', error);
       Alert.alert('Erro', 'Falha ao solicitar saque. Tente novamente.');
     } finally {
       setWithdrawLoading(false);
@@ -631,7 +609,7 @@ Será processado em até 1 dia útil.`,
       <View style={styles.quickActions}>
         <Button
           title="Solicitar Saque"
-          onPress={() => setShowWithdrawModal(true)}
+          onPress={() => router.push('/telas_extras/payout-management')}
           variant="primary"
           icon={<MaterialIcons name="account-balance" size={16} color="#ffffff" />}
           fullWidth
@@ -832,7 +810,7 @@ Será processado em até 1 dia útil.`,
                       {formatCurrency(transaction.amount)}
                     </Text>
                   </View>
-                </View>
+                </View> 
                 
                 <View style={styles.transactionFooter}>
                   <View style={styles.transactionCategory}>

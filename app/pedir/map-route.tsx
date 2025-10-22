@@ -25,6 +25,7 @@ export default function MapRouteScreen() {
   }>();
 
   const mapRef = useRef<MapView | null>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const [loading, setLoading] = useState(true);
   const [originText, setOriginText] = useState('');
   const [destinationText, setDestinationText] = useState('');
@@ -83,6 +84,12 @@ export default function MapRouteScreen() {
         setLoading(false);
       }
     })();
+  }, []);
+
+  // Desativar tracking visual dos markers após primeira render
+  useEffect(() => {
+    const t = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(t);
   }, []);
 
   // Cleanup dos timeouts e abort controllers ao desmontar
@@ -187,7 +194,16 @@ export default function MapRouteScreen() {
         Alert.alert('Rota', 'Não foi possível calcular a rota');
         return;
       }
-      setRouteCoords(route.coordinates);
+      // Downsample simples para reduzir custo de render
+      const downsample = (coords: LatLng[], maxPoints: number = 400) => {
+        if (!Array.isArray(coords) || coords.length <= maxPoints) return coords;
+        const step = Math.max(1, Math.ceil(coords.length / maxPoints));
+        const out: LatLng[] = [];
+        for (let i = 0; i < coords.length; i += step) out.push(coords[i]);
+        if (out[out.length - 1] !== coords[coords.length - 1]) out.push(coords[coords.length - 1]);
+        return out;
+      };
+      setRouteCoords(downsample(route.coordinates));
       setDistanceKm(route.distanceKm);
       setDurationMin(route.durationMin);
       try {

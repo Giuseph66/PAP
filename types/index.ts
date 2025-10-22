@@ -118,6 +118,8 @@ export interface Shipment {
   pacote: Package;
   quote: Quote;
   state: ShipmentState;
+  /** Flag independente do estado para indicar pagamento efetuado */
+  paymentPaid?: boolean;
   courierUid?: string;
   etaMin?: number;
   timeline: TimelineEvent[];
@@ -131,6 +133,18 @@ export interface Shipment {
   city?: string; // Cidade do pickup para filtro
   // Sistema de rejeições
   rejectionCount?: number; // Quantas vezes foi rejeitado
+  // Pagamento atual (intent)
+  paymentIntent?: {
+    method: 'PIX' | 'CASH';
+    mpPaymentId?: string; // id do Mercado Pago
+    qrCode?: string; // EMV copia e cola
+    qrCodeBase64?: string; // imagem
+    status?: 'pending' | 'approved' | 'expired' | 'cancelled' | 'rejected';
+    updatedAt?: Date;
+  };
+  /** Token de confirmação de entrega */
+  deliveryToken?: string;
+  deliveryTokenGeneratedAt?: Date;
 }
 
 // Payment Types
@@ -148,6 +162,35 @@ export interface Payment {
   };
   createdAt: Date;
   updatedAt: Date;
+  // Quem pagou e quem aceitou (se aplicável)
+  paidByUserId?: string;
+  acceptedByCourierId?: string;
+  /** Data da entrega confirmada (base para cálculo de idade) */
+  deliveredAt?: Date;
+  /** Entrega confirmada via QR */
+  deliveryConfirmed?: boolean;
+  /** Total já sacado deste pagamento (em reais) */
+  withdrawnAmount?: number;
+  /** Histórico de saques deste pagamento */
+  withdrawals?: Array<{
+    amount: number; // em reais
+    payoutId?: string;
+    at?: Date;
+  }>;
+}
+
+// Payout allocation breakdown
+export interface PayoutAllocation {
+  paymentId: string;
+  shipmentId?: string;
+  originalPaymentValue: number; // valor do pagamento em reais
+  availableBefore: number; // disponível antes da alocação
+  allocated: number; // valor alocado em reais
+  ageDays: number;
+  feePercent: number; // percentual aplicado
+  feeAmount: number; // em reais
+  netAmount: number; // em reais
+  deliveredAt?: Date;
 }
 
 // Chat Types
@@ -173,16 +216,32 @@ export interface CourierLocation {
 }
 
 // Payout Types
-export type PayoutStatus = 'PENDING' | 'PAID' | 'FAILED';
+export type PayoutStatus = 'PENDING' | 'PROCESSING' | 'APPROVED' | 'CANCELLED' | 'FAILED';
 
 export interface Payout {
   id: string;
   courierUid: string;
-  valor: number;
-  chavePix: string;
+  valor: number; // Valor original em centavos
+  valorComDesconto: number; // Valor final em centavos (após desconto)
+  percentualDesconto: number; // 10 ou 5 (percentual)
+  valorDesconto: number; // Valor do desconto em centavos
+  chavePix: string; // Chave PIX (CPF, email, telefone, aleatória)
+  nomeTitular: string; // Nome da conta que vai receber
   status: PayoutStatus;
-  corridasRefs: string[];
+  mensagemAdmin?: string; // Feedback do admin (ex: "Chave PIX inválida")
+  deliveryIds: string[]; // IDs das entregas associadas
+  deliveryDates: Date[]; // Datas de criação das entregas
   createdAt: Date;
+  updatedAt: Date;
+  approvedAt?: Date; // Quando foi aprovado
+  processedAt?: Date; // Quando foi processado/pago
+}
+
+export interface PayoutFeeConfig {
+  id: string; // sempre "config"
+  feeImmediate: number; // Taxa de saque imediato (10)
+  feeDelayed: number; // Taxa de saque em até 30 dias (5)
+  updatedAt: Date;
 }
 
 // Form Types
@@ -207,6 +266,7 @@ export interface AuthUser {
   salt: string;
   role: UserRole;
   nome: string;
+  avatar?: string;
   telefone: string;
   perfilCompleto?: boolean;
   createdAt: Date;
@@ -219,6 +279,12 @@ export interface AuthUser {
   veiculo?: VehicleType;
   capacidadeKg?: number;
   isAdmin?: boolean;
+  /** Saldo em centavos para pagamentos via carteira/cache */
+  saldoCentavos?: number;
+  /** Orçamento mensal (empresa): limite de gastos, em centavos */
+  budgetCompanyLimitCentavos?: number;
+  /** Meta mensal (entregador): receita/meta a alcançar, em centavos */
+  budgetCourierTargetCentavos?: number;
   user: User;
 }
 

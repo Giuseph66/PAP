@@ -1,11 +1,11 @@
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import React from 'react';
-import { View, ViewStyle } from 'react-native';
+import { StyleProp, View, ViewStyle } from 'react-native';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   padding?: number;
   margin?: number;
   shadow?: boolean;
@@ -30,7 +30,6 @@ export function Card({
     margin,
     borderWidth: 1,
     borderColor: colors.border,
-    ...style,
   };
 
   if (shadow) {
@@ -47,7 +46,7 @@ export function Card({
   }
 
   return (
-    <View style={cardStyle}>
+    <View style={[cardStyle, style]}>
       {children}
     </View>
   );

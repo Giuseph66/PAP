@@ -126,31 +126,42 @@ export class LocationService {
         throw new Error('Permissões de localização necessárias');
       }
 
+      // Para qualquer rastreamento anterior antes de iniciar novo
       if (this.isTracking) {
         await this.stopLocationTracking();
+      }
+
+      // Verifica se já existe um watcher ativo
+      if (this.locationWatcher) {
+        this.locationWatcher.remove();
+        this.locationWatcher = null;
       }
 
       this.locationWatcher = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // Atualizar a cada 10 segundos
-          distanceInterval: 20, // Ou quando se mover 20 metros
+          timeInterval: 15000, // Aumentado para 15 segundos para reduzir uso de bateria
+          distanceInterval: 25, // Aumentado para 25 metros
         },
         (location) => {
-          this.updateCourierLocation(courierUid, location);
+          // Verifica se ainda está rastreando antes de atualizar
+          if (this.isTracking) {
+            this.updateCourierLocation(courierUid, location);
+          }
         }
       );
 
       this.isTracking = true;
-      console.log('Rastreamento de localização iniciado');
+      console.log('Rastreamento de localização iniciado para:', courierUid);
     } catch (error) {
       console.error('Erro ao iniciar rastreamento:', error);
+      this.isTracking = false;
       throw new Error('Falha ao iniciar rastreamento');
     }
   }
 
   /**
-   * Parar rastreamento de localização
+   * Parar rastreamento de localização com limpeza robusta
    */
   public async stopLocationTracking(): Promise<void> {
     try {
@@ -158,11 +169,24 @@ export class LocationService {
         this.locationWatcher.remove();
         this.locationWatcher = null;
       }
-      
+
       this.isTracking = false;
       console.log('Rastreamento de localização parado');
+
+      // Define presença como offline quando parar rastreamento
+      try {
+        const session = await import('@/services/auth.service').then(m => m.authService.getSession());
+        if (session?.userId) {
+          const { ref, set } = await import('firebase/database');
+          const { realtimeDb } = await import('@/config/firebase');
+          await set(ref(realtimeDb, `presence/${session.userId}`), 'offline');
+        }
+      } catch (presenceError) {
+        console.warn('Erro ao definir presença offline:', presenceError);
+      }
     } catch (error) {
       console.error('Erro ao parar rastreamento:', error);
+      this.isTracking = false; // Garante que o estado seja resetado mesmo com erro
     }
   }
 

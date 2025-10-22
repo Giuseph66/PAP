@@ -440,7 +440,7 @@ export default function AdminPanelScreen() {
           
           <TouchableOpacity 
             style={styles.menuItem}
-            onPress={handleManageSettings}
+            onPress={() => router.push('/telas_extras/admin-config')}
           >
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIcon, { backgroundColor: `${colors.tint}20` }]}>
@@ -452,6 +452,28 @@ export default function AdminPanelScreen() {
                 </Text>
                 <Text style={[styles.menuSubtitle, { color: colors.tabIconDefault }]}>
                   Gerenciar configurações do sistema
+                </Text>
+              </View>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <View style={[styles.separator, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/telas_extras/payout-management')}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIcon, { backgroundColor: `${colors.tint}20` }]}>
+                <MaterialIcons name="savings" size={20} color={colors.tint} />
+              </View>
+              <View>
+                <Text style={[styles.menuTitle, { color: colors.text }]}>
+                  Saques
+                </Text>
+                <Text style={[styles.menuSubtitle, { color: colors.tabIconDefault }]}>
+                  Gerenciar saques dos entregadores
                 </Text>
               </View>
             </View>

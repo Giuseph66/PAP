@@ -3,13 +3,19 @@ import { Card } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { authService } from '@/services/auth.service';
+import { createPixPayment, getPaymentStatus } from '@/services/mercado-pago.service';
+import { paymentService } from '@/services/payment.service';
 import { shipmentFirestoreService } from '@/services/shipment-firestore.service';
+import { walletService } from '@/services/wallet.service';
 import { Shipment } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Clipboard,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -63,6 +69,12 @@ export default function PaymentConfirmationScreen() {
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<'pix' | 'cash'>('pix');
+  const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  const [qrCodeEmv, setQrCodeEmv] = useState<string | null>(null);
+  const [isPixFlowActive, setIsPixFlowActive] = useState(false);
+  const [mpPaymentId, setMpPaymentId] = useState<string | number | null>(null);
+  const pollingRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const fetchShipment = async () => {
@@ -104,9 +116,44 @@ export default function PaymentConfirmationScreen() {
           lastNotificationAt: shipmentData.lastNotificationAt,
           city: shipmentData.city,
           rejectionCount: shipmentData.rejectionCount,
+          paymentPaid: (shipmentData as any).paymentPaid,
+          paymentIntent: (shipmentData as any).paymentIntent,
         };
         
         setShipment(shipment);
+
+        // Reidrata um PIX já existente (carregado do banco)
+        const intent = (shipmentData as any).paymentIntent as any | undefined;
+        if (intent && intent.method === 'PIX' && (intent.qrCodeBase64 || intent.qrCode) && intent.mpPaymentId) {
+          setQrCodeBase64(intent.qrCodeBase64 || null);
+          setQrCodeEmv(intent.qrCode || null);
+          setMpPaymentId(intent.mpPaymentId);
+          setIsPixFlowActive(true);
+          // Reinicia polling se ainda não aprovado
+          if (intent.status !== 'approved') {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            const totalAmount = shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER')
+              ? shipment.currentOffer.offeredPrice
+              : shipment.quote.preco;
+            pollingRef.current = setInterval(async () => {
+              try {
+                const statusResp = await getPaymentStatus(String(intent.mpPaymentId));
+                const status = statusResp?.status;
+                if (status === 'approved') {
+                  if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+                  try { await shipmentFirestoreService.updateShipmentFields(shipment.id, { paymentPaid: true }); } catch (error) { console.error('Error updating shipment:', error); }
+                  try { await walletService.creditSaldo(Math.round(Number(totalAmount) * 100), { reason: 'PIX aprovado', shipmentId: shipment.id }); } catch (error) { console.error('Error crediting saldo:', error); }
+                  try { await paymentService.markApproved({ shipmentId: shipment.id, paymentId: String(intent.mpPaymentId), mpPaymentId: String(intent.mpPaymentId), paidByUserId: shipment.clienteUid, acceptedByCourierId: shipment.courierUid }); } catch (error) { console.error('Error marking payment as approved:', error); }
+                  Alert.alert('Pagamento Confirmado!', 'Seu envio foi pago com sucesso.');
+                  router.replace(`/confirmacao/qr-display?id=${shipment.id}`);
+                } else if (status === 'expired' || status === 'cancelled' || status === 'rejected') {
+                  if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+                  Alert.alert('Pagamento não concluído', `Status: ${String(status)}`);
+                }
+              } catch (error) { console.error('Error polling payment status:', error); }
+            }, 3000);
+          }
+        }
       } catch (err) {
         console.error('Error fetching shipment:', err);
         setError('Falha ao carregar detalhes do envio');
@@ -128,33 +175,122 @@ export default function PaymentConfirmationScreen() {
 
   const handleConfirmPayment = async () => {
     if (!shipment) return;
-    
+    const userData = await authService.getCurrentUserData();
+
+    // Se já existe um PIX ativo, apenas verificar status
+    if (isPixFlowActive && mpPaymentId) {
+      setIsLoading(true);
+      try {
+        const statusResp = await getPaymentStatus(String(mpPaymentId));
+        console.log('statusResp', statusResp);
+        const status = statusResp?.status;
+
+        if (status === 'approved') {
+          // Já estava pago, marcar novamente para garantir
+          try { await shipmentFirestoreService.updateShipmentFields(shipment.id, { paymentPaid: true }); } catch (error) { console.error('Error updating shipment:', error); }
+          Alert.alert('Pagamento Confirmado!', 'Seu envio foi pago com sucesso.');
+          router.replace(`/confirmacao/qr-display?id=${shipment.id}`);
+        } else if (status === 'expired' || status === 'cancelled' || status === 'rejected') {
+          Alert.alert('Pagamento não concluído', `Status: ${String(status)}`);
+        } else {
+          Alert.alert('Pagamento Pendente', 'Aguardando confirmação do pagamento...');
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error);
+        Alert.alert('Erro', 'Falha ao verificar pagamento. Tente novamente.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Caso contrário, criar novo pagamento PIX
     setIsLoading(true);
-    
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Update shipment state to PAID
-      await shipmentFirestoreService.updateShipmentState(shipment.id, 'PAID');
-      
-      Alert.alert(
-        'Pagamento Confirmado!',
-        'Seu envio foi pago com sucesso e está pronto para ser coletado.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/(tabs)/cliente/business-home'),
-          },
-        ]
-      );
+      const amount = shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER')
+        ? shipment.currentOffer.offeredPrice
+        : shipment.quote.preco;
+
+      if (selectedMethod === 'cash') {
+        setIsLoading(false);
+        Alert.alert('Pagamento em dinheiro', 'Combine o pagamento diretamente com o entregador.');
+        return;
+      }
+
+      // PIX: criar QR e mostrar imediatamente
+      const mp = await createPixPayment({
+        transaction_amount: Number(amount),
+        description: `Envio ${shipment.id}`,
+        external_reference: shipment.id,
+        notification_url: `${process.env.EXPO_PUBLIC_WEBHOOK_URL}/webhook`,
+        payer: {
+          email: userData?.email || 'cliente@example.com',
+        },
+      });
+
+      const tx = mp?.point_of_interaction?.transaction_data || {};
+      const qr = tx.qr_code || null;
+      const qrB64 = tx.qr_code_base64 || null;
+      if (!qr && !qrB64) throw new Error('PIX não retornou QR Code');
+
+      setQrCodeBase64(qrB64);
+      setQrCodeEmv(qr);
+      setMpPaymentId(mp.id);
+      setIsPixFlowActive(true);
+      setIsLoading(false);
+
+      // Persistir pagamento e intent no shipment
+      try {
+        await paymentService.createPaymentRecord({
+          shipmentId: shipment.id,
+          metodo: 'PIX',
+          valor: Number(amount),
+          mpPaymentId: mp.id,
+          qrCode: qr || undefined,
+          qrCodeBase64: qrB64 || undefined,
+          paidByUserId: shipment.clienteUid,
+          acceptedByCourierId: shipment.courierUid,
+        });
+      } catch (error) { console.error('Error creating payment record:', error); }
+
+      // Polling de status em background (3s)
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current = setInterval(async () => {
+        try {
+          if (!mp.id) return;
+          const statusResp = await getPaymentStatus(mp.id);
+          console.log('statusResp', statusResp);
+          const status = statusResp?.status;
+          if (status === 'approved') {
+            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+            try { await shipmentFirestoreService.updateShipmentFields(shipment.id, { paymentPaid: true }); } catch (error) { console.error('Error updating shipment:', error); }
+            try { await walletService.creditSaldo(Math.round(Number(amount) * 100), { reason: 'PIX aprovado', shipmentId: shipment.id }); } catch (error) { console.error('Error crediting saldo:', error); }
+            try { await paymentService.markApproved({ shipmentId: shipment.id, paymentId: String(mp.id), mpPaymentId: mp.id, paidByUserId: shipment.clienteUid, acceptedByCourierId: shipment.courierUid }); } catch (error) { console.error('Error marking payment as approved:', error); throw error; }
+            Alert.alert('Pagamento Confirmado!', 'Seu envio foi pago com sucesso.');
+            router.replace(`/confirmacao/qr-display?id=${shipment.id}`);
+          } else if (status === 'expired' || status === 'cancelled' || status === 'rejected') {
+            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+            Alert.alert('Pagamento não concluído', `Status: ${String(status)}`);
+            router.replace(`/confirmacao/qr-display?id=${shipment.id}`);
+          }
+        } catch (error) { console.error('Error polling payment status:', error); }
+      }, 3000);
     } catch (error) {
       console.error('Error processing payment:', error);
-      Alert.alert('Erro', 'Falha ao processar pagamento. Tente novamente.');
+      Alert.alert('Erro', 'Falha no fluxo PIX. Tente novamente.');
     } finally {
-      setIsLoading(false);
+      // isLoading já atualizado ao exibir o QR
     }
   };
+
+  React.useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
 
   if (isLoading) {
     return <Loading text="Carregando detalhes do envio..." />;
@@ -234,45 +370,30 @@ export default function PaymentConfirmationScreen() {
         </Card>
 
         <Card style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}> 
             Método de Pagamento
           </Text>
-          
-          <TouchableOpacity style={[styles.paymentMethod, { borderColor: colors.tint }]}>
-            <MaterialIcons name="credit-card" size={24} color={colors.tint} />
+          <TouchableOpacity
+            onPress={() => setSelectedMethod('pix')}
+            style={[styles.paymentMethod, { borderColor: selectedMethod === 'pix' ? colors.tint : colors.border }]}
+          >
+            <MaterialIcons name="qr-code" size={24} color={selectedMethod === 'pix' ? colors.tint : colors.tabIconDefault} />
             <View style={styles.paymentMethodInfo}>
-              <Text style={[styles.paymentMethodTitle, { color: colors.text }]}>
-                Cartão de Crédito
-              </Text>
-              <Text style={[styles.paymentMethodSubtitle, { color: colors.tabIconDefault }]}>
-                **** **** **** 1234
-              </Text>
+              <Text style={[styles.paymentMethodTitle, { color: colors.text }]}>PIX</Text>
+              <Text style={[styles.paymentMethodSubtitle, { color: colors.tabIconDefault }]}>Pagamento instantâneo</Text>
             </View>
-            <MaterialIcons name="check-circle" size={24} color={colors.tint} />
+            {selectedMethod === 'pix' && <MaterialIcons name="check-circle" size={24} color={colors.tint} />}
           </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.paymentMethod, { borderColor: colors.border }]}>
-            <MaterialIcons name="account-balance" size={24} color={colors.tabIconDefault} />
+          <TouchableOpacity
+            onPress={() => setSelectedMethod('cash')}
+            style={[styles.paymentMethod, { borderColor: selectedMethod === 'cash' ? colors.tint : colors.border }]}
+          >
+            <MaterialIcons name="local-atm" size={24} color={selectedMethod === 'cash' ? colors.tint : colors.tabIconDefault} />
             <View style={styles.paymentMethodInfo}>
-              <Text style={[styles.paymentMethodTitle, { color: colors.text }]}>
-                Transferência Bancária
-              </Text>
-              <Text style={[styles.paymentMethodSubtitle, { color: colors.tabIconDefault }]}>
-                PIX, TED, DOC
-              </Text>
+              <Text style={[styles.paymentMethodTitle, { color: colors.text }]}>Dinheiro</Text>
+              <Text style={[styles.paymentMethodSubtitle, { color: colors.tabIconDefault }]}>Pague diretamente ao entregador</Text>
             </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.paymentMethod, { borderColor: colors.border }]}>
-            <MaterialIcons name="account-balance-wallet" size={24} color={colors.tabIconDefault} />
-            <View style={styles.paymentMethodInfo}>
-              <Text style={[styles.paymentMethodTitle, { color: colors.text }]}>
-                Saldo em Conta
-              </Text>
-              <Text style={[styles.paymentMethodSubtitle, { color: colors.tabIconDefault }]}>
-                R$ 0,00 disponível
-              </Text>
-            </View>
+            {selectedMethod === 'cash' && <MaterialIcons name="check-circle" size={24} color={colors.tint} />}
           </TouchableOpacity>
         </Card>
 
@@ -406,6 +527,34 @@ export default function PaymentConfirmationScreen() {
           </View>
         </Card>
 
+        {selectedMethod === 'pix' && (
+          <Card style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>QR PIX</Text>
+            <View style={{ alignItems: 'center', gap: 12 }}>
+              {isPixFlowActive && qrCodeBase64 && (
+                <Image
+                  source={{ uri: `data:image/png;base64,${qrCodeBase64}` }}
+                  style={{ width: 220, height: 220, marginBottom: 8 }}
+                />
+              )}
+              {isPixFlowActive && !!qrCodeEmv && (
+                <View style={{ flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.infoText, { color: colors.text }]} selectable numberOfLines={4}>
+                    {qrCodeEmv}
+                  </Text>
+                  <TouchableOpacity onPress={() => Clipboard.setString(qrCodeEmv)}>
+                    <MaterialIcons name="content-copy" size={24} color={colors.tint} />
+                    <Text style={[styles.infoText, { color: colors.text }]}>Copiar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {!isPixFlowActive && (
+                <Text style={[styles.infoText, { color: colors.tabIconDefault }]}>Toque em Confirmar para gerar o QR</Text>
+              )}
+            </View>
+          </Card>
+        )}
+
         <View style={styles.infoContainer}>
           <MaterialIcons name="info" size={20} color={colors.tint} />
           <Text style={[styles.infoText, { color: colors.tabIconDefault }]}>
@@ -424,7 +573,7 @@ export default function PaymentConfirmationScreen() {
           disabled={isLoading}
         />
         <Button
-          title={`Confirmar Pagamento - ${shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER') 
+          title={`${isPixFlowActive ? 'Verificar Pagamento' : 'Confirmar Pagamento'} - ${shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER') 
             ? formatPrice(shipment.currentOffer.offeredPrice)
             : formatPrice(shipment.quote.preco)
           }`}

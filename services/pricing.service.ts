@@ -1,3 +1,5 @@
+import { systemConfigService } from '@/services/system-config.service';
+
 export interface PricingInput {
   distanceKm: number;
   weightKg?: number;
@@ -10,14 +12,17 @@ export interface PricingBreakdown {
   total: number;
 }
 
-// Regra: R$ 5,00 até 0.5 km (500m). Após isso, preço cresce gradualmente.
-// Implementação: preço variável linear por km adicional com degraus suaves.
-// Exemplo: R$ 3,50 por km adicional após 0.5 km, com arredondamento a 2 casas.
-const MIN_DISTANCE_KM = 0.5;
-const MIN_PRICE = 5.0;
-const PRICE_PER_KM = 3.5;
-
 export function estimatePrice({ distanceKm, weightKg = 0, fragil = false }: PricingInput): PricingBreakdown {
+  // Get pricing configuration from system config service
+  const config = systemConfigService.getPricingConfig();
+  
+  const MIN_DISTANCE_KM = config.minDistanceKm;
+  const MIN_PRICE = config.minPrice;
+  const PRICE_PER_KM = config.pricePerKm;
+  const WEIGHT_THRESHOLD = config.weightThreshold;
+  const WEIGHT_MULTIPLIER = config.weightMultiplier;
+  const FRAGILE_MULTIPLIER = config.fragileMultiplier;
+
   if (!Number.isFinite(distanceKm) || distanceKm < 0) {
     return { basePrice: MIN_PRICE, variablePrice: 0, total: MIN_PRICE };
   }
@@ -32,12 +37,16 @@ export function estimatePrice({ distanceKm, weightKg = 0, fragil = false }: Pric
 
   let total = basePrice + variablePrice;
 
-  // Aplicar multiplicadores
-  if (weightKg > 5) {
-    total = round2(total * 1.2); // 20% extra para >5kg
+  // Aplicar multiplicador por peso (apenas sobre o peso excedente)
+  if (weightKg > WEIGHT_THRESHOLD) {
+    const excessWeight = weightKg - WEIGHT_THRESHOLD;
+    const weightExtra = round2(excessWeight * (WEIGHT_MULTIPLIER - 1) * PRICE_PER_KM);
+    total += weightExtra;
   }
+  
+  // Aplicar multiplicador por frágil (sobre o total)
   if (fragil) {
-    total = round2(total * 1.15); // 15% extra para frágil
+    total = round2(total * FRAGILE_MULTIPLIER);
   }
 
   // Preço mínimo final

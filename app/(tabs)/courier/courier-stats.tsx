@@ -1,6 +1,8 @@
 import { Card } from '@/components/ui/card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { authService } from '@/services/auth.service';
+import { courierStatsService } from '@/services/courier-stats.service';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useEffect, useState } from 'react';
 import {
@@ -169,15 +171,45 @@ export default function CourierStatsScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate loading data
     const loadStats = async () => {
-      setLoading(true);
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setStats(mockCourierStats);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const session = await authService.getSession();
+        if (!session?.userId) {
+          setStats(null);
+          setLoading(false);
+          return;
+        }
+        const real = await courierStatsService.getCourierStats(session.userId);
+        const mapped = {
+          totalDeliveries: real.totalDeliveries,
+          completedDeliveries: real.completedDeliveries,
+          cancelledDeliveries: real.cancelledDeliveries,
+          onTimeRate: real.onTimeRate,
+          avgDeliveryTime: real.avgDeliveryTime,
+          totalEarnings: real.totalEarnings,
+          pendingPayments: real.pendingPayments,
+          avgEarningsPerDelivery: real.avgEarningsPerDelivery,
+          weeklyEarnings: real.weeklyEarnings,
+          hoursOnline: real.hoursOnline,
+          distanceTraveled: real.distanceTraveled,
+          avgRating: 4.8,
+          totalRatings: 0,
+          customerFeedback: [],
+          successRate: real.successRate,
+          recentDeliveries: real.recentDeliveries.map((d) => ({
+            id: d.id,
+            customer: d.customer,
+            amount: d.amount,
+            status: d.status,
+            time: d.time,
+          })),
+        } as any;
+        setStats(mapped);
+      } finally {
+        setLoading(false);
+      }
     };
-
     loadStats();
   }, []);
 
@@ -359,28 +391,32 @@ export default function CourierStatsScreen() {
           Áreas Populares
         </Text>
         <Card style={[styles.areasCard, { backgroundColor: colors.background }]}>
-          {stats.popularAreas.map((area, index) => {
-            const maxDeliveries = Math.max(...stats.popularAreas.map(a => a.deliveries));
-            return (
-              <View key={index} style={styles.areaItem}>
-                <Text style={[styles.areaName, { color: colors.text }]}>{area.area}</Text>
-                <View style={styles.areaProgress}>
-                  <View 
-                    style={[
-                      styles.areaProgressBar, 
-                      { 
-                        width: `${(area.deliveries / maxDeliveries) * 100}%`,
-                        backgroundColor: colors.tint
-                      }
-                    ]} 
-                  />
+          {Array.isArray((stats as any).popularAreas) && (stats as any).popularAreas.length > 0 ? (
+            (stats as any).popularAreas.map((area: any, index: number) => {
+              const maxDeliveries = Math.max(...(stats as any).popularAreas.map((a: any) => a.deliveries || 0));
+              return (
+                <View key={index} style={styles.areaItem}>
+                  <Text style={[styles.areaName, { color: colors.text }]}>{area.area}</Text>
+                  <View style={styles.areaProgress}>
+                    <View 
+                      style={[
+                        styles.areaProgressBar, 
+                        { 
+                          width: `${maxDeliveries > 0 ? (area.deliveries || 0) / maxDeliveries * 100 : 0}%`,
+                          backgroundColor: colors.tint
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={[styles.areaCount, { color: colors.tabIconDefault }]}>
+                    {area.deliveries || 0}
+                  </Text>
                 </View>
-                <Text style={[styles.areaCount, { color: colors.tabIconDefault }]}>
-                  {area.deliveries}
-                </Text>
-              </View>
-            );
-          })}
+              );
+            })
+          ) : (
+            <Text style={{ color: colors.tabIconDefault }}>Sem dados suficientes</Text>
+          )}
         </Card>
       </View>
 

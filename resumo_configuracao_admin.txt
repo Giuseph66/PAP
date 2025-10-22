@@ -1,0 +1,81 @@
+# Resumo das Criações e Modificações Realizadas
+
+## 1. Nova Tela de Configuração Administrativa
+
+Criei uma nova tela chamada `admin-config.tsx` no diretório `app/telas_extras/`. Esta tela permite que administradores configurem diversos aspectos do sistema:
+
+### Recursos da Tela:
+- Configuração de preços (distância mínima, preço mínimo, preço por km adicional)
+- Configuração de multiplicadores (peso e frágil)
+- Configuração de notificações (número máximo e tempo de espera)
+- Configuração de envios (limite de rejeições e expiração de ofertas)
+- Teste de cálculo de preços com parâmetros configuráveis
+- Função para salvar as configurações
+- Função para redefinir para valores padrão
+
+## 2. Serviço de Configuração do Sistema
+
+Criei um novo serviço `system-config.service.ts` em `services/` que gerencia as configurações do sistema:
+
+### Funcionalidades:
+- Carrega configurações do Firestore
+- Salva configurações no Firestore
+- Fornece acesso às configurações em tempo de execução
+- Define valores padrão para todas as configurações
+
+## 3. Atualizações no AuthService
+
+Modifiquei o arquivo `auth.service.ts` para adicionar um método `updateSystemConfig` que permite aos administradores atualizar as configurações do sistema.
+
+## 4. Integração com Serviços Existentes
+
+Atualizei vários serviços para utilizar as configurações do sistema:
+
+### Pricing Service (`pricing.service.ts`):
+- Agora utiliza as configurações de preço do sistema em vez de valores hardcoded
+
+### Notification Service (`notification.service.ts`):
+- Agora utiliza as configurações de notificação do sistema
+
+### Shipment Service (`shipment-firestore.service.ts`):
+- Importa o serviço de configuração do sistema
+
+### Offer Modal (`offer-modal.tsx`):
+- Utiliza a configuração de expiração de ofertas do sistema
+
+### Root Layout (`_layout.tsx`):
+- Inicializa o serviço de configuração do sistema na inicialização do app
+- Verifica o limite de rejeições com base nas configurações do sistema
+
+## 5. Atualizações de Rotas
+
+Adicionei a nova tela de configuração administrativa ao sistema de rotas no arquivo `_layout.tsx`.
+
+## 6. Melhorias na Interface
+
+### Admin Panel (`admin-panel.tsx`):
+- Atualizei o link para configurações para apontar para a nova tela de configuração
+
+### Profile Screen (`profile.tsx`):
+- Adicionei um link para o painel administrativo na seção de administração
+
+## 7. Atualização da Documentação
+
+### README.md:
+- Adicionei informações sobre os recursos administrativos
+- Atualizei a descrição das funcionalidades principais
+- Expandi as seções sobre perfis de usuário e experiência administrativa
+
+## 8. Script de Teste
+
+Criei um script de teste `test-system-config.ts` em `scripts/` para verificar o funcionamento do serviço de configuração do sistema.
+
+## Resumo Geral
+
+O sistema agora possui uma interface completa de administração que permite configurar aspectos importantes do funcionamento do aplicativo, como:
+
+1. **Precificação**: Como os preços das entregas são calculados
+2. **Notificações**: Como e quando os entregadores são notificados sobre novas entregas
+3. **Limites de Envio**: Quantas vezes um envio pode ser rejeitado e quando as ofertas expiram
+
+Todas essas configurações são armazenadas no Firestore e podem ser ajustadas em tempo real pelos administradores do sistema, permitindo uma gestão dinâmica e flexível da plataforma.

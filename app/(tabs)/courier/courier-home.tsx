@@ -3,10 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
+import { courierStatsService } from '@/services/courier-stats.service';
 import { locationService } from '@/services/location.service';
 import { AuthUser, CourierLocation } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
+import { getItem, setItem } from 'expo-secure-store';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -42,21 +44,22 @@ export default function CourierHomeScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [onlineStatus, setOnlineStatus] = useState<'online' | 'offline'>('offline');
+  const [onlineStatus, setOnlineStatus] = useState<'online' | 'offline'>(getItem('courier_online_status') as 'online' | 'offline');
   const [user, setUser] = useState<AuthUser | null>(null);
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(100)).current;
   
-  // Stats
+  // Stats reais (simplificadas para o header)
   const [stats, setStats] = useState({
-    todayEarnings: 85.50,
-    todayDeliveries: 5,
+    todayEarnings: 0,
+    todayDeliveries: 0,
     rating: 4.8,
-    onlineHours: 3.5,
+    onlineHours: 0,
   });
 
   const mapRef = useRef<MapView | null>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   // Animate in on load
   useEffect(() => {
@@ -109,6 +112,16 @@ export default function CourierHomeScreen() {
           },
         };
         setUser(userData);
+
+        // Carrega estatísticas reais básicas do dia a partir dos payments do entregador
+        const [txnsDTO] = await Promise.all([
+          courierStatsService.getCourierTransactions(session.userId),
+        ]);
+        const today = new Date().toDateString();
+        const todayTxns = txnsDTO.filter((t) => t.date.toDateString() === today && t.status === 'completed');
+        const todayEarnings = todayTxns.reduce((sum, t) => sum + t.amount, 0);
+        const todayDeliveries = todayTxns.length;
+        setStats((prev) => ({ ...prev, todayEarnings, todayDeliveries }));
       }
       
       // Solicitar permissões de localização primeiro
@@ -219,14 +232,40 @@ export default function CourierHomeScreen() {
   // Initial load
   useEffect(() => {
     loadData();
+    loadOnlineStatus(); // Carregar status salvo
+  }, []);
+
+  // Carregar status online salvo
+  const loadOnlineStatus = async () => {
+    try {
+      const savedStatus = await getItem('courier_online_status');
+      if (savedStatus) {
+        setOnlineStatus(savedStatus as 'online' | 'offline');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar status online:', error);
+    }
+  };
+
+  // Desativa tracking dos markers após a primeira pintura
+  useEffect(() => {
+    const t = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(t);
   }, []);
 
   const handleRefresh = () => {
     loadData(true);
   };
 
-  const toggleOnlineStatus = () => {
-    setOnlineStatus(prev => prev === 'online' ? 'offline' : 'online');
+  const toggleOnlineStatus = async () => {
+    const newStatus = onlineStatus === 'online' ? 'offline' : 'online';
+    setOnlineStatus(newStatus);
+    
+    try {
+      await setItem('courier_online_status', newStatus);
+    } catch (error) {
+      console.error('Erro ao salvar status online:', error);
+    }
   };
 
   const handleCenterMap = () => {
@@ -285,6 +324,7 @@ export default function CourierHomeScreen() {
                 longitude: currentLocation.longitude,
               }}
               title="Sua localização"
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={[styles.locationMarker, { backgroundColor: onlineStatus === 'online' ? '#4CAF50' : '#f44336' }]}>
                 <MaterialIcons name="person" size={20} color="#fff" />
@@ -301,6 +341,7 @@ export default function CourierHomeScreen() {
                 }}
                 title={courier.name}
                 description={`Avaliação: ${courier.rating}`}
+                tracksViewChanges={tracksViewChanges}
               >
                 <View style={styles.courierMarker}>
                   <MaterialIcons name="motorcycle" size={24} color="#fff" />
@@ -374,6 +415,7 @@ export default function CourierHomeScreen() {
           ]}
         >
           <View style={styles.header}>
+              {user && (
             <View>
               <Text style={[styles.greeting, { color: colors.tabIconDefault }]}>
                 Olá, {user?.nome}!
@@ -381,7 +423,14 @@ export default function CourierHomeScreen() {
               <Text style={[styles.title, { color: colors.text }]}>
                 Bem-vindo(a) de volta
               </Text>
-            </View>
+            </View>)}
+            {!user && (
+            <View>
+              <Text style={[styles.title, { color: colors.text }]}>
+                Bem-vindo(a) ao Ponto a Ponto
+              </Text>
+              </View>
+            )}
             <TouchableOpacity 
               style={[styles.profileButton, { backgroundColor: `${colors.tint}20` }]}
               onPress={() => router.push('/telas_extras/profile')}
@@ -432,23 +481,6 @@ export default function CourierHomeScreen() {
             <View style={styles.actionsGrid}>
               <TouchableOpacity 
                 style={styles.actionCard}
-                onPress={handleViewEarnings}
-              >
-                <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
-                  <View style={[styles.actionIcon, { backgroundColor: `${colors.tint}20` }]}>
-                    <MaterialIcons name="account-balance-wallet" size={24} color={colors.tint} />
-                  </View>
-                  <Text style={[styles.actionTitle, { color: colors.text }]}>
-                    Financeiro
-                  </Text>
-                  <Text style={[styles.actionSubtitle, { color: colors.tabIconDefault }]}>
-                    Ver ganhos
-                  </Text>
-                </Card>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionCard}
                 onPress={handleViewStats}
               >
                 <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
@@ -463,10 +495,44 @@ export default function CourierHomeScreen() {
                   </Text>
                 </Card>
               </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={() => router.push('/shipment/courier-shipments')}
+              >
+                <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
+                  <View style={[styles.actionIcon, { backgroundColor: `${colors.tint}20` }]}>
+                    <MaterialIcons name="local-shipping" size={24} color={colors.tint} />
+                  </View>
+                  <Text style={[styles.actionTitle, { color: colors.text }]}>
+                    Entregas perdidas
+                  </Text>
+                  <Text style={[styles.actionSubtitle, { color: colors.tabIconDefault }]}>
+                    Entregas que talvez você queira fazer
+                  </Text>
+                </Card>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={handleViewEarnings}
+              >
+                <Card style={StyleSheet.flatten([styles.actionCardContent, { backgroundColor: colors.background }])}>
+                  <View style={[styles.actionIcon, { backgroundColor: `${colors.tint}20` }]}>
+                    <MaterialIcons name="account-balance-wallet" size={24} color={colors.tint} />
+                  </View>
+                  <Text style={[styles.actionTitle, { color: colors.text }]}>
+                    Financeiro
+                  </Text>
+                  <Text style={[styles.actionSubtitle, { color: colors.tabIconDefault }]}>
+                    Ver ganhos
+                  </Text>
+                </Card>
+              </TouchableOpacity>
+
             </View>
           </View>
 
-          {/* Online Hours */}
+          {/* Online Hours
           <Card style={StyleSheet.flatten([styles.hoursCard, { backgroundColor: colors.background }])}>
             <View style={styles.hoursHeader}>
               <Text style={[styles.hoursTitle, { color: colors.text }]}>
@@ -491,6 +557,7 @@ export default function CourierHomeScreen() {
               Meta diária: 8h
             </Text>
           </Card>
+          */}
 
           {/* CTA Button */}
           <View style={styles.ctaContainer}>
@@ -500,7 +567,7 @@ export default function CourierHomeScreen() {
               variant={onlineStatus === 'online' ? "primary" : "secondary"}
               size="lg"
               fullWidth
-              disabled={onlineStatus === 'online'}
+              //disabled={onlineStatus === 'online'}
             />
           </View>
         </Animated.View>

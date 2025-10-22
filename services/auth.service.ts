@@ -102,7 +102,7 @@ export class AuthService {
       await updateDoc(doc(firestore, 'authUsers', created.id), {
         perfilCompleto: false,
       });
-      resolvedUser = { ...created, telefone: undefined, perfilCompleto: false } as AuthUser;
+      resolvedUser = { ...created, telefone: created.telefone || '', perfilCompleto: false } as AuthUser;
       firstLogin = true;
     } else {
       // valida senha
@@ -248,10 +248,28 @@ export class AuthService {
     try {
       const userDoc = await getDoc(doc(firestore, 'authUsers', session.userId));
       if (!userDoc.exists()) return null;
-      const data = userDoc.data();
-      return data as AuthUser;
+      const data = userDoc.data() as any;
+      return {
+        id: userDoc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() ?? new Date(0),
+        updatedAt: data.updatedAt?.toDate?.() ?? new Date(),
+      } as AuthUser;
     } catch (error) {
       console.error('Error loading user data:', error);
+      return null;
+    }
+  }
+
+  public async getUserById(userId: string): Promise<AuthUser | null> {
+    if (!userId) return null;
+    try {
+      const userDoc = await getDoc(doc(firestore, 'authUsers', userId));
+      if (!userDoc.exists()) return null;
+      const data = userDoc.data();
+      return { id: userDoc.id, ...data } as AuthUser;
+    } catch (error) {
+      console.error('Error loading user by id:', error);
       return null;
     }
   }
@@ -269,6 +287,50 @@ export class AuthService {
     } catch (error) {
       console.error('Error updating user profile:', error);
       throw new Error('Falha ao atualizar perfil');
+    }
+  }
+
+  /** Atualiza orçamento do usuário (empresa: limite; courier: meta). Valores em centavos. */
+  public async updateUserBudget(params: {
+    companyLimitCentavos?: number;
+    courierTargetCentavos?: number;
+  }): Promise<void> {
+    const session = await this.getSession();
+    if (!session || !session.userId) throw new Error('Usuário não autenticado');
+
+    try {
+      const userRef = doc(firestore, 'authUsers', session.userId);
+      const payload: any = {
+        updatedAt: Timestamp.fromDate(new Date()),
+      };
+      if (typeof params.companyLimitCentavos === 'number') {
+        payload.budgetCompanyLimitCentavos = Math.max(0, Math.floor(params.companyLimitCentavos));
+      }
+      if (typeof params.courierTargetCentavos === 'number') {
+        payload.budgetCourierTargetCentavos = Math.max(0, Math.floor(params.courierTargetCentavos));
+      }
+      await updateDoc(userRef, payload);
+    } catch (error) {
+      console.error('Error updating user budget:', error);
+      throw new Error('Falha ao atualizar orçamento');
+    }
+  }
+
+  /** Lê orçamento do usuário com defaults zero */
+  public async getUserBudget(userId?: string): Promise<{ companyLimitCentavos: number; courierTargetCentavos: number }>{
+    try {
+      const uid = userId || (await this.getSession())?.userId;
+      if (!uid) throw new Error('Usuário não autenticado');
+      const snap = await getDoc(doc(firestore, 'authUsers', uid));
+      if (!snap.exists()) return { companyLimitCentavos: 0, courierTargetCentavos: 0 };
+      const data = snap.data() as any;
+      return {
+        companyLimitCentavos: Number(data.budgetCompanyLimitCentavos || 0),
+        courierTargetCentavos: Number(data.budgetCourierTargetCentavos || 0),
+      };
+    } catch (error) {
+      console.error('Error getting user budget:', error);
+      return { companyLimitCentavos: 0, courierTargetCentavos: 0 };
     }
   }
 
@@ -355,6 +417,26 @@ export class AuthService {
     } catch (error) {
       console.error('Error updating current user role:', error);
       throw new Error('Falha ao atualizar seu papel');
+    }
+  }
+
+  // Admin method to update system configuration
+  public async updateSystemConfig(config: any): Promise<void> {
+    const session = await this.getSession();
+    if (!session || !session.userId) throw new Error('Usuário não autenticado');
+    
+    // Check if current user is admin
+    const currentUser = await this.getCurrentUserData();
+    if (!currentUser?.isAdmin) throw new Error('Acesso negado: apenas administradores');
+
+    try {
+      // In a real implementation, this would save to a 'systemConfig' document in Firestore
+      // For now, we'll just simulate the operation
+      console.log('Updating system configuration:', config);
+      // await updateDoc(doc(firestore, 'systemConfig', 'main'), config);
+    } catch (error) {
+      console.error('Error updating system configuration:', error);
+      throw new Error('Falha ao atualizar configurações do sistema');
     }
   }
 

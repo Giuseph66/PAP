@@ -1,54 +1,17 @@
 import { Card } from '@/components/ui/card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { authService } from '@/services/auth.service';
+import { CompanyStats, companyStatsService } from '@/services/company-stats.service';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useEffect, useState } from 'react';
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
-
-// Tipos para estatísticas de empresa
-interface CompanyStats {
-  // Métricas de envio
-  totalShipments: number;
-  completedShipments: number;
-  pendingShipments: number;
-  cancelledShipments: number;
-  avgDeliveryTime: number; // em minutos
-  onTimeRate: number;
-  
-  // Informações financeiras
-  totalSpent: number;
-  avgCostPerShipment: number;
-  monthlySpending: number[];
-  spendingByCategory: { category: string; amount: number; percentage: number }[];
-  
-  // Dados operacionais
-  peakHours: { hour: number; shipments: number }[];
-  popularAreas: { area: string; shipments: number }[];
-  packageTypes: { type: string; count: number; percentage: number }[];
-  usageFrequency: 'daily' | 'weekly' | 'monthly' | 'occasionally';
-  
-  // Métricas de qualidade
-  avgCourierRating: number;
-  totalRatings: number;
-  complaintRate: number;
-  customerSatisfaction: number;
-  
-  // Atividade recente
-  recentShipments: {
-    id: string;
-    description: string;
-    amount: number;
-    status: 'completed' | 'pending' | 'cancelled' | 'in_transit';
-    date: Date;
-    courier?: string;
-    rating?: number;
-  }[];
-}
 
 // Dados mock para demonstração
 const mockCompanyStats: CompanyStats = {
@@ -177,13 +140,27 @@ export default function CompanyStatsScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simular carregamento de dados
+    // Carregar dados reais do Firestore
     const loadStats = async () => {
       setLoading(true);
-      // Simular atraso de chamada API
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setStats(mockCompanyStats);
-      setLoading(false);
+      try {
+        // Busca sessão do usuário
+        const session = await authService.getSession();
+        if (!session) {
+          Alert.alert('Erro', 'Usuário não autenticado');
+          setLoading(false);
+          return;
+        }
+
+        // Busca estatísticas da empresa
+        const statsData = await companyStatsService.getCompanyStats(session.userId);
+        setStats(statsData);
+      } catch (error) {
+        console.error('Error loading company stats:', error);
+        Alert.alert('Erro', 'Falha ao carregar estatísticas');
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadStats();

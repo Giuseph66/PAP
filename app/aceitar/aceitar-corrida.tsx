@@ -25,11 +25,12 @@ import {
   Vibration,
   View
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import OfferModal from './offer-modal';
 
 interface RideRequest {
   id: string;
+  paymentPaid: boolean;
   passenger: {
     name: string;
     rating: number;
@@ -123,6 +124,24 @@ export default function AcceptRideScreen() {
   
   const mapRef = useRef<MapView | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  // Downsample simples para polylines densas
+  const downsamplePolyline = (coords: LatLng[], maxPoints: number = 300): LatLng[] => {
+    if (!Array.isArray(coords) || coords.length <= maxPoints) return coords;
+    const step = Math.max(1, Math.ceil(coords.length / maxPoints));
+    const sampled: LatLng[] = [];
+    for (let i = 0; i < coords.length; i += step) sampled.push(coords[i]);
+    if (sampled[sampled.length - 1] !== coords[coords.length - 1]) sampled.push(coords[coords.length - 1]);
+    return sampled;
+  };
+
+  // Após primeira renderização, desativa tracking visual dos markers (deve estar antes de qualquer return)
+  useEffect(() => {
+    const t = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Obtém localização real do usuário
   useEffect(() => {
@@ -165,6 +184,7 @@ export default function AcceptRideScreen() {
     // Se está em modo de teste, usa os parâmetros recebidos
       rideData = {
         id: params.shipmentId as string || params.id as string || 'ride_123',
+        paymentPaid: params.paymentPaid === 'false',
         passenger: {
           name: params.passengerName as string || 'Maria Silva',
           rating: parseFloat(params.passengerRating as string) || 4.92,
@@ -192,7 +212,7 @@ export default function AcceptRideScreen() {
           category: (params.paymentCategory as 'X' | 'Moto' | 'Entrega' | 'Premium') || 'X'
         },
         pricing: {
-          base: parseFloat(params.pricingBase as string) || 8.50,
+          base: parseFloat(params.pricingBase as string) || 5,
           distance: parseFloat(params.pricingDistance as string) || 12.30,
           duration: parseFloat(params.pricingDuration as string) || 4.20,
           surge: parseFloat(params.pricingSurge as string) || 1.2,
@@ -242,27 +262,22 @@ export default function AcceptRideScreen() {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, [rideRequest, isAccepted, isRejected, hideTimer]);
 
-  // Animação do timer
+  // Animação do timer (com cleanup)
   useEffect(() => {
     if (timeLeft <= 5) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnimation, {
-            toValue: 1.1,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnimation, {
-            toValue: 1,
-            duration: 200,
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnimation, { toValue: 1.1, duration: 200, useNativeDriver: true }),
+          Animated.timing(pulseAnimation, { toValue: 1, duration: 200, useNativeDriver: true }),
         ])
-      ).start();
+      );
+      loop.start();
+      return () => { try { loop.stop(); } catch {} };
     }
   }, [timeLeft]);
 
@@ -289,7 +304,7 @@ useEffect(() => {
           distance: rideRoute.distanceKm,
           duration: rideRoute.durationMin
         });
-        setRouteCoords(rideRoute.coordinates);
+        setRouteCoords(downsamplePolyline(rideRoute.coordinates));
         setRouteDistance(rideRoute.distanceKm);
         setRouteDuration(rideRoute.durationMin);
       } else {
@@ -308,7 +323,7 @@ useEffect(() => {
             duration: pickupRoute.durationMin,
             coordinatesCount: pickupRoute.coordinates.length
           });
-          setPickupRouteCoords(pickupRoute.coordinates);
+          setPickupRouteCoords(downsamplePolyline(pickupRoute.coordinates));
           setRealDistanceToPickup(pickupRoute.distanceKm * 1000); // Converte para metros
           setRealTimeToPickup(pickupRoute.durationMin);
           console.log('📍 Coordenadas da rota até pickup definidas:', pickupRoute.coordinates.length, 'pontos');
@@ -479,19 +494,27 @@ useEffect(() => {
       console.error('Error handling rejection:', error);
     }
     
-    // Volta para tela anterior ou home
-    setTimeout(async () => {
-      // Verifica se pode voltar
-      if (router.canGoBack()) {
-      router.back();
-      } else {
-        // Se não pode voltar, vai para home
-        const session = await authService.getSession();
-        if (session?.role === 'courier') {
-          router.replace('/(tabs)/courier/courier-home');
+    // Volta para tela anterior ou home com limpeza adequada
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        // Verifica se pode voltar
+        if (router.canGoBack()) {
+          router.back();
         } else {
-          router.replace('/(tabs)/cliente/business-home');
+          // Se não pode voltar, vai para home
+          const session = await authService.getSession();
+          if (session?.role === 'courier') {
+            router.replace('/(tabs)/courier/courier-home');
+          } else {
+            router.replace('/(tabs)/cliente/business-home');
+          }
         }
+      } catch (error) {
+        console.error('Error in navigation timeout:', error);
       }
     }, 500);
   };
@@ -593,6 +616,7 @@ useEffect(() => {
     currentLocation: !!currentLocation,
     mapReady
   });
+
   return (
     <Modal visible={true} animationType="slide" presentationStyle="fullScreen">
       <KeyboardAvoidingView 
@@ -602,6 +626,7 @@ useEffect(() => {
         {/* Mapa de fundo */}
         <View style={styles.mapContainer}>
           <MapView
+            provider={PROVIDER_GOOGLE}
             ref={mapRef}
             style={StyleSheet.absoluteFill}
             onMapReady={() => setMapReady(true)}
@@ -617,6 +642,7 @@ useEffect(() => {
               <Marker
                 coordinate={currentLocation}
                 title="Sua localização"
+                tracksViewChanges={tracksViewChanges}
               >
                 <View style={styles.currentLocationMarker}>
                   <View style={styles.currentLocationDot} />
@@ -628,6 +654,7 @@ useEffect(() => {
             <Marker
               coordinate={rideRequest.pickup.coordinates}
               title="Ponto de Retirada"
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={styles.pickupMarker}>
                 <MaterialIcons name="my-location" size={24} color="#fff" />
@@ -638,6 +665,7 @@ useEffect(() => {
             <Marker
               coordinate={rideRequest.destination.coordinates}
               title="Destino"
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={styles.destinationMarker}>
                 <MaterialIcons name="place" size={24} color="#fff" />
@@ -784,7 +812,7 @@ useEffect(() => {
 
             {/* Informações resumidas quando colapsado */}
             {isInfoCollapsed && (
-              <View style={[styles.collapsedInfo, { marginTop: 0, padding: 6 }]}> // Reduced padding
+              <View style={[styles.collapsedInfo, { marginTop: 0, padding: 6 }]}> 
                 <View style={styles.collapsedRow}>
                   <Text style={[styles.collapsedLabel, { color: colors.tabIconDefault }]}>
                     Preço:
@@ -920,17 +948,19 @@ useEffect(() => {
 
           {/* Pagamento e categoria */}
           <View style={[styles.paymentSection, { marginBottom: 12 }]}>
-            <View style={styles.paymentInfo}>
-              <MaterialIcons 
-                name={getPaymentIcon(rideRequest.payment.method)} 
-                size={20} 
-                color={colors.tint} 
-              />
-              <Text style={[styles.paymentMethod, { color: colors.tabIconDefault }]}>
-                {rideRequest.payment.method === 'card' ? 'Cartão' : 
-                 rideRequest.payment.method === 'cash' ? 'Dinheiro' : 'Vale'}
-              </Text>
-            </View>
+            {/* Exibe status de pagamento apenas se já estiver pago */}
+            {rideRequest.paymentPaid === true && (
+              <View style={styles.paymentInfo}>
+                <MaterialIcons 
+                  name="check-circle" 
+                  size={20} 
+                  color="#10b981" 
+                />
+                <Text style={[styles.paymentMethod, { color: '#10b981' }]}>
+                  Pagamento Confirmado
+                </Text>
+              </View>
+            )}
             
             <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(rideRequest.payment.category) }]}>
               <Text style={styles.categoryText}>
@@ -945,6 +975,7 @@ useEffect(() => {
               <Text style={[styles.pricingTitle, { color: colors.text }]}>
                 Ganho Estimado
               </Text>
+              {/* Impulso/Surge - comentado pois não está em uso no sistema atual
               {rideRequest.pricing.surge && rideRequest.pricing.surge > 1 && (
                 <View style={styles.surgeBadge}>
                   <MaterialIcons name="flash-on" size={16} color="#fff" />
@@ -953,6 +984,7 @@ useEffect(() => {
                   </Text>
                 </View>
               )}
+              */}
             </View>
             
             <View style={styles.pricingBreakdown}>
@@ -970,16 +1002,7 @@ useEffect(() => {
                   Distância:
                 </Text>
                 <Text style={[styles.pricingValue, { color: colors.text }]}>
-                  {formatPrice(rideRequest.pricing.distance)}
-                </Text>
-              </View>
-              
-              <View style={styles.pricingRow}>
-                <Text style={[styles.pricingLabel, { color: colors.tabIconDefault }]}>
-                  Tempo:
-                </Text>
-                <Text style={[styles.pricingValue, { color: colors.text }]}>
-                  {formatPrice(rideRequest.pricing.duration)}
+                  {formatPrice(rideRequest.pricing.distance-5)}
                 </Text>
               </View>
               

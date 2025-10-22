@@ -5,6 +5,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
 import { shipmentFirestoreService } from '@/services/shipment-firestore.service';
+import { systemConfigService } from '@/services/system-config.service';
 import { CourierOffer, Shipment } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useState } from 'react';
@@ -57,13 +58,14 @@ export default function OfferModal({ visible, shipment, onClose, onOfferSubmitte
         return;
       }
 
+      const config = systemConfigService.getShipmentConfig();
       const offer: CourierOffer = {
         courierUid: session.userId,
         courierName: 'Entregador', // TODO: Buscar nome do entregador
         offeredPrice: parseFloat(offeredPrice),
         message: message.trim() || undefined,
         createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+        expiresAt: new Date(Date.now() + config.offerExpirationHours * 60 * 60 * 1000) // Use system config
       };
 
       // Adiciona oferta ao envio

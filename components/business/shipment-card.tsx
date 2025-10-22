@@ -3,6 +3,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Shipment, ShipmentState } from '@/types';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -115,12 +116,28 @@ export function ShipmentCard({ shipment, onPress, showCourier = false }: Shipmen
               {stateLabels[shipment.state]}
             </Text>
           </View>
-          <Text style={[styles.price, { color: colors.text }]}>
-            {shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER') 
-              ? formatPrice(shipment.currentOffer.offeredPrice)
-              : formatPrice(shipment.quote.preco)
-            }
-          </Text>
+          <View style={styles.priceContainer}>
+            <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
+              <Text style={[styles.price, { color: shipment.paymentPaid ? "#10b981" : colors.text }]}>
+                {shipment.currentOffer && (shipment.state === 'COUNTER_OFFER' || shipment.state === 'OFFERED' || shipment.state === 'ACCEPTED_OFFER') 
+                  ? formatPrice(shipment.currentOffer.offeredPrice)
+                  : formatPrice(shipment.quote.preco)
+                }
+              </Text>
+              {shipment.paymentPaid && (
+                <View style={[styles.paidBadge, { backgroundColor: '#10b98120' }]}>
+                  <MaterialIcons name="check-circle" size={14} color="#10b981" />
+                  <Text style={[styles.paidText, { color: '#10b981' }]}>Pago</Text>
+                </View>
+              )}
+              {!shipment.paymentPaid && (
+                <View style={[styles.unpaidBadge, { backgroundColor: '#f5940020' }]}>
+                  <MaterialIcons name="pending" size={14} color="#f59e0b" />
+                  <Text style={[styles.unpaidText, { color: '#f59e0b' }]}>Pendente</Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
 
         <View style={styles.addresses}>
@@ -228,7 +245,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   stateContainer: {
@@ -240,9 +257,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
+  priceContainer: {
+    alignItems: 'flex-end',
+  },
   price: {
     fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  paidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  paidText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  unpaidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  unpaidText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   addresses: {
     marginBottom: 12,

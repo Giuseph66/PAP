@@ -3,6 +3,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import React from 'react';
 import {
     ActivityIndicator,
+    StyleProp,
     Text,
     TextStyle,
     TouchableOpacity,
@@ -13,16 +14,17 @@ export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'dan
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps {
-  title: string;
+  title?: string;
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
   fullWidth?: boolean;
+  children?: React.ReactNode;
 }
 
 export function Button({
@@ -36,6 +38,7 @@ export function Button({
   textStyle,
   icon,
   fullWidth = false,
+  children,
 }: ButtonProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
@@ -152,9 +155,13 @@ export function Button({
       ) : (
         <>
           {icon && <>{icon}</>}
-          <Text style={[getTextStyle(), textStyle, icon && { marginLeft: 8 }]}>
-            {title}
-          </Text>
+          {title ? (
+            <Text style={[getTextStyle(), textStyle, icon ? { marginLeft: 8 } : undefined]}>
+              {title}
+            </Text>
+          ) : (
+            children
+          )}
         </>
       )}
     </TouchableOpacity>

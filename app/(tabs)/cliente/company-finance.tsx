@@ -4,7 +4,10 @@ import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { authService } from '@/services/auth.service';
+import { CompanyFinancialStats, companyStatsService, CompanyTransaction } from '@/services/company-stats.service';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -15,156 +18,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
-// Tipos para transações financeiras de empresa
-interface CompanyTransaction {
-  id: string;
-  type: 'expense' | 'subscription' | 'refund';
-  amount: number;
-  description: string;
-  category: string;
-  status: 'completed' | 'pending' | 'processing' | 'failed';
-  date: Date;
-  referenceId?: string; // ID do envio relacionado
-  paymentMethod?: string; // PIX, Cartão, Boleto, etc.
-  notes?: string;
-  invoiceNumber?: string; // Número da nota fiscal
-}
-
-// Tipos para estatísticas financeiras de empresa
-interface CompanyFinancialStats {
-  totalSpent: number;
-  pendingExpenses: number;
-  avgCostPerShipment: number;
-  budgetUsed: number;
-  budgetLimit: number;
-  monthlyTrend: number; // Porcentagem de mudança em relação ao mês anterior
-  transactionsCount: number;
-  topCategories: { category: string; amount: number; percentage: number }[];
-  monthlySpending: { month: string; amount: number }[];
-}
-
-// Dados mock para demonstração
-const mockTransactions: CompanyTransaction[] = [
-  {
-    id: 'txn_101',
-    type: 'expense',
-    amount: -18.50,
-    description: 'Envio de documentos - Contrato jurídico',
-    category: 'Documentos',
-    status: 'completed',
-    date: new Date('2024-01-15T14:30:00'),
-    referenceId: 'ship_456',
-    paymentMethod: 'PIX',
-    invoiceNumber: 'INV-2024-001',
-  },
-  {
-    id: 'txn_102',
-    type: 'expense',
-    amount: -15.00,
-    description: 'Envio de amostra de produto',
-    category: 'Produtos',
-    status: 'completed',
-    date: new Date('2024-01-15T11:45:00'),
-    referenceId: 'ship_457',
-    paymentMethod: 'PIX',
-    invoiceNumber: 'INV-2024-002',
-  },
-  {
-    id: 'txn_103',
-    type: 'expense',
-    amount: -22.25,
-    description: 'Envio de protótipo',
-    category: 'Produtos',
-    status: 'pending',
-    date: new Date('2024-01-15T09:20:00'),
-    referenceId: 'ship_458',
-    paymentMethod: 'PIX',
-  },
-  {
-    id: 'txn_104',
-    type: 'expense',
-    amount: -12.75,
-    description: 'Envio de documentos fiscais',
-    category: 'Documentos',
-    status: 'completed',
-    date: new Date('2024-01-15T08:10:00'),
-    referenceId: 'ship_459',
-    paymentMethod: 'PIX',
-    invoiceNumber: 'INV-2024-003',
-  },
-  {
-    id: 'txn_105',
-    type: 'subscription',
-    amount: -99.90,
-    description: 'Plano mensal Premium',
-    category: 'Assinatura',
-    status: 'completed',
-    date: new Date('2024-01-01T00:00:00'),
-    paymentMethod: 'Cartão',
-    invoiceNumber: 'INV-SUB-001',
-  },
-  {
-    id: 'txn_106',
-    type: 'expense',
-    amount: -14.00,
-    description: 'Envio de material de escritório',
-    category: 'Outros',
-    status: 'completed',
-    date: new Date('2024-01-14T16:30:00'),
-    referenceId: 'ship_460',
-    paymentMethod: 'PIX',
-    invoiceNumber: 'INV-2024-004',
-  },
-  {
-    id: 'txn_107',
-    type: 'expense',
-    amount: -25.50,
-    description: 'Envio de equipamentos eletrônicos',
-    category: 'Produtos',
-    status: 'processing',
-    date: new Date('2024-01-13T14:20:00'),
-    referenceId: 'ship_461',
-    paymentMethod: 'Boleto',
-  },
-  {
-    id: 'txn_108',
-    type: 'refund',
-    amount: 5.00,
-    description: 'Reembolso por problema na entrega',
-    category: 'Reembolso',
-    status: 'completed',
-    date: new Date('2024-01-12T11:15:00'),
-    referenceId: 'ship_455',
-    paymentMethod: 'PIX',
-    invoiceNumber: 'INV-REF-001',
-  },
-];
-
-const mockStats: CompanyFinancialStats = {
-  totalSpent: 1875.25,
-  pendingExpenses: 35.00,
-  avgCostPerShipment: 17.85,
-  budgetUsed: 1875.25,
-  budgetLimit: 2000.00,
-  monthlyTrend: -5.2,
-  transactionsCount: 49,
-  topCategories: [
-    { category: 'Documentos', amount: 645.20, percentage: 34.4 },
-    { category: 'Produtos', amount: 820.80, percentage: 43.8 },
-    { category: 'Assinatura', amount: 99.90, percentage: 5.3 },
-    { category: 'Outros', amount: 241.00, percentage: 12.9 },
-    { category: 'Reembolso', amount: -5.00, percentage: -0.3 },
-  ],
-  monthlySpending: [
-    { month: 'Jan', amount: 1875.25 },
-    { month: 'Fev', amount: 1620.50 },
-    { month: 'Mar', amount: 1980.75 },
-    { month: 'Abr', amount: 1750.00 },
-    { month: 'Mai', amount: 2100.25 },
-    { month: 'Jun', amount: 1950.80 },
-  ],
-};
 
 const periodFilters = [
   { key: 'today', label: 'Hoje' },
@@ -199,6 +52,7 @@ export default function CompanyFinanceScreen() {
   const [transactions, setTransactions] = useState<CompanyTransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<CompanyTransaction[]>([]);
   const [stats, setStats] = useState<CompanyFinancialStats | null>(null);
+  const [budgetLimitInput, setBudgetLimitInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -226,14 +80,30 @@ export default function CompanyFinanceScreen() {
     }
     
     try {
-      // Simular chamada API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Busca sessão do usuário
+      const session = await authService.getSession();
+      if (!session) {
+        Alert.alert('Erro', 'Usuário não autenticado');
+        return;
+      }
+
+      // Busca dados reais do Firestore
+      const [transactionsData, budget] = await Promise.all([
+        companyStatsService.getCompanyTransactions(session.userId),
+        authService.getUserBudget(session.userId),
+      ]);
+
+      const statsData = await companyStatsService.getFinancialStats(
+        session.userId,
+        budget.companyLimitCentavos
+      );
       
-      setTransactions(mockTransactions);
-      setStats(mockStats);
+      setTransactions(transactionsData);
+      setStats(statsData);
+      setBudgetLimitInput(String((budget.companyLimitCentavos || 0) / 100));
       
       // Aplicar filtros iniciais
-      applyFilters(mockTransactions, 'month', 'all', 'all', '');
+      applyFilters(transactionsData, 'month', 'all', 'all', '');
     } catch (error) {
       console.error('Error loading financial data:', error);
       Alert.alert('Erro', 'Falha ao carregar dados financeiros');
@@ -385,22 +255,28 @@ export default function CompanyFinanceScreen() {
   };
 
   const handleUpdateBudget = async () => {
-    if (!newBudgetLimit || parseFloat(newBudgetLimit) <= 0) {
+    const parsed = Number(newBudgetLimit.replace(',', '.'));
+    if (Number.isNaN(parsed) || parsed < 0) {
       Alert.alert('Validação', 'Informe um valor válido para o orçamento');
       return;
     }
-    
     setBudgetLoading(true);
     try {
-      // Simular atualização de orçamento
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Persistir orçamento em centavos
+      await authService.updateUserBudget({ companyLimitCentavos: Math.round(parsed * 100) });
+
+      // Recarregar stats com novo orçamento
+      const session = await authService.getSession();
+      if (session) {
+        const refreshed = await companyStatsService.getFinancialStats(session.userId, Math.round(parsed * 100));
+        setStats(refreshed);
+      }
+
       Alert.alert(
         'Orçamento Atualizado', 
-        `Orçamento mensal atualizado para ${formatCurrency(parseFloat(newBudgetLimit))}`,
+        `Orçamento mensal atualizado para ${formatCurrency(parsed)}`,
         [{ text: 'OK', onPress: () => setShowBudgetModal(false) }]
       );
-      
-      // Resetar formulário
       setNewBudgetLimit('');
     } catch (error) {
       Alert.alert('Erro', 'Falha ao atualizar orçamento. Tente novamente.');
@@ -608,7 +484,7 @@ export default function CompanyFinanceScreen() {
         />
         <Button
           title="Novo Envio"
-          onPress={() => Alert.alert('Info', 'Funcionalidade em desenvolvimento')}
+          onPress={() => router.push('/pedir/create-shipment')}
           variant="primary"
           icon={<MaterialIcons name="add" size={16} color="#ffffff" />}
           style={styles.quickActionButton}

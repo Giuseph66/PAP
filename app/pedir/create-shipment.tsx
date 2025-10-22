@@ -7,6 +7,7 @@ import { authService } from '@/services/auth.service';
 import { locationService } from '@/services/location.service';
 import { estimatePrice } from '@/services/pricing.service';
 import { shipmentFirestoreService } from '@/services/shipment-firestore.service';
+import { systemConfigService } from '@/services/system-config.service';
 import { AddressRef, CreateShipmentForm, LocationPoint, Package, Quote, ShipmentState, TimelineEvent } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -288,10 +289,12 @@ export default function CreateShipmentScreen() {
   const [valueInputText, setValueInputText] = useState('');
   const [showCustomDimensionsModal, setShowCustomDimensionsModal] = useState(false);
   const [selectedDimensionPreset, setSelectedDimensionPreset] = useState<string | null>(null);
+  const [showClearDataModal, setShowClearDataModal] = useState(false);
 
   // Chaves para persistência
   const FORM_STORAGE_KEY = 'create_shipment_form';
   const ADDRESSES_STORAGE_KEY = 'create_shipment_addresses';
+  const ROUTE_INFO_STORAGE_KEY = 'create_shipment_route_info';
 
   // Presets de dimensões
   const dimensionPresets = [
@@ -334,6 +337,9 @@ export default function CreateShipmentScreen() {
   const [priceBreakdown, setPriceBreakdown] = useState<{
     basePrice: number;
     variablePrice: number;
+    weightAdjustment: number;
+    fragilityAdjustment: number;
+    excessWeight: number;
     weightMultiplier: number;
     fragilityMultiplier: number;
     total: number;
@@ -354,9 +360,10 @@ export default function CreateShipmentScreen() {
   useEffect(() => {
     const loadSavedData = async () => {
       try {
-        const [savedForm, savedAddresses] = await Promise.all([
+        const [savedForm, savedAddresses, savedRouteInfo] = await Promise.all([
           AsyncStorage.getItem(FORM_STORAGE_KEY),
           AsyncStorage.getItem(ADDRESSES_STORAGE_KEY),
+          AsyncStorage.getItem(ROUTE_INFO_STORAGE_KEY),
         ]);
 
         if (savedForm) {
@@ -374,6 +381,11 @@ export default function CreateShipmentScreen() {
           const { pickup, dropoff } = JSON.parse(savedAddresses);
           if (pickup) setPickupAddress(pickup);
           if (dropoff) setDropoffAddress(dropoff);
+        }
+
+        if (savedRouteInfo) {
+          const parsedRouteInfo = JSON.parse(savedRouteInfo);
+          setRouteInfo(parsedRouteInfo);
         }
       } catch (error) {
         console.error('Error loading saved data:', error);
@@ -411,6 +423,21 @@ export default function CreateShipmentScreen() {
       saveAddressData();
     }
   }, [pickupAddress, dropoffAddress]);
+
+  // Salva informações da rota sempre que mudam
+  useEffect(() => {
+    const saveRouteInfo = async () => {
+      try {
+        if (routeInfo.distKm || routeInfo.price) {
+          await AsyncStorage.setItem(ROUTE_INFO_STORAGE_KEY, JSON.stringify(routeInfo));
+        }
+      } catch (error) {
+        console.error('Error saving route info:', error);
+      }
+    };
+
+    saveRouteInfo();
+  }, [routeInfo]);
 
   // Aplica retorno direto via params (quando vindo do mapa em modo select)
   useEffect(() => {
@@ -751,9 +778,73 @@ Agora aguarde um entregador aceitar sua corrida.`,
       await Promise.all([
         AsyncStorage.removeItem(FORM_STORAGE_KEY),
         AsyncStorage.removeItem(ADDRESSES_STORAGE_KEY),
+        AsyncStorage.removeItem(ROUTE_INFO_STORAGE_KEY),
       ]);
     } catch (error) {
       console.error('Error clearing saved data:', error);
+    }
+  };
+
+  const clearAllData = async () => {
+    try {
+      // Limpa dados salvos
+      await clearSavedData();
+      
+      // Limpa estados do formulário
+      setForm({
+        pickup: {
+          endereco: '',
+          address: '',
+          contato: '',
+          instrucoes: '',
+        },
+        dropoff: {
+          endereco: '',
+          address: '',
+          contato: '',
+          instrucoes: '',
+        },
+        pacote: {
+          pesoKg: 0,
+          dim: { c: 0, l: 0, a: 0 },
+          fragil: false,
+          valorDeclarado: 0,
+        },
+      });
+      
+      // Limpa endereços
+      setPickupAddress(undefined);
+      setDropoffAddress(undefined);
+      
+      // Limpa informações da rota
+      setRouteInfo({});
+      
+      // Limpa preço e breakdown
+      setLivePrice(null);
+      setPriceBreakdown(null);
+      
+      // Limpa cotação e step
+      setQuote(null);
+      setStep('form');
+      
+      // Limpa erros
+      setErrors({});
+      
+      // Limpa textos dos inputs
+      setWeightInputText('');
+      setDimCInputText('');
+      setDimLInputText('');
+      setDimAInputText('');
+      setValueInputText('');
+      
+      // Limpa preset selecionado
+      setSelectedDimensionPreset(null);
+      
+      // Fecha modal
+      setShowClearDataModal(false);
+      
+    } catch (error) {
+      console.error('Error clearing all data:', error);
     }
   };
 
@@ -901,9 +992,15 @@ Agora aguarde um entregador aceitar sua corrida.`,
   };
 
   const calculatePriceBreakdown = ({ distanceKm, weightKg, fragil }: { distanceKm: number; weightKg: number; fragil: boolean }) => {
-    const MIN_DISTANCE_KM = 0.5;
-    const MIN_PRICE = 5.0;
-    const PRICE_PER_KM = 3.5;
+    // Usar as configurações do sistema (mesmas do estimatePrice)
+    const config = systemConfigService.getPricingConfig();
+    
+    const MIN_DISTANCE_KM = config.minDistanceKm;
+    const MIN_PRICE = config.minPrice;
+    const PRICE_PER_KM = config.pricePerKm;
+    const WEIGHT_THRESHOLD = config.weightThreshold;
+    const WEIGHT_MULTIPLIER = config.weightMultiplier;
+    const FRAGILE_MULTIPLIER = config.fragileMultiplier;
     
     // Preço base
     let basePrice = MIN_PRICE;
@@ -914,22 +1011,36 @@ Agora aguarde um entregador aceitar sua corrida.`,
       variablePrice = Math.round(extraKm * PRICE_PER_KM * 100) / 100;
     }
     
-    let subtotal = basePrice + variablePrice;
+    let total = basePrice + variablePrice;
     
-    // Multiplicadores
-    const weightMultiplier = weightKg > 5 ? 0.2 : 0; // 20% para >5kg
-    const fragilityMultiplier = fragil ? 0.15 : 0; // 15% para frágil
+    // Aplicar multiplicador por peso (apenas sobre o peso excedente)
+    let weightAdjustment = 0;
+    let excessWeight = 0;
+    if (weightKg > WEIGHT_THRESHOLD) {
+      excessWeight = weightKg - WEIGHT_THRESHOLD;
+      weightAdjustment = Math.round(excessWeight * (WEIGHT_MULTIPLIER - 1) * PRICE_PER_KM * 100) / 100;
+      total += weightAdjustment;
+    }
     
-    const weightAdjustment = subtotal * weightMultiplier;
-    const fragilityAdjustment = subtotal * fragilityMultiplier;
+    // Aplicar multiplicador por frágil (sobre o total)
+    let fragilityAdjustment = 0;
+    if (fragil) {
+      const beforeFragile = total;
+      total = Math.round(total * FRAGILE_MULTIPLIER * 100) / 100;
+      fragilityAdjustment = total - beforeFragile;
+    }
     
-    const total = Math.max(MIN_PRICE, subtotal + weightAdjustment + fragilityAdjustment);
+    // Preço mínimo final
+    total = Math.max(MIN_PRICE, total);
     
     return {
       basePrice,
       variablePrice,
-      weightMultiplier: weightMultiplier * 100, // Em percentual
-      fragilityMultiplier: fragilityMultiplier * 100, // Em percentual
+      weightAdjustment,
+      fragilityAdjustment,
+      excessWeight,
+      weightMultiplier: weightKg > WEIGHT_THRESHOLD ? (WEIGHT_MULTIPLIER - 1) * 100 : 0, // Em percentual
+      fragilityMultiplier: fragil ? (FRAGILE_MULTIPLIER - 1) * 100 : 0, // Em percentual
       total: Math.round(total * 100) / 100,
     };
   };
@@ -997,13 +1108,14 @@ Agora aguarde um entregador aceitar sua corrida.`,
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={async () => {
-            // Limpa dados ao sair sem confirmar
-            await clearSavedData();
             router.back();
           }} style={styles.headerBackButton}>  
-          <MaterialIcons name="arrow-back" size={20} color={colors.tint} />
+          <MaterialIcons name="arrow-back" size={30} color={colors.tint} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Criar Envio</Text>
+             <TouchableOpacity onPress={() => setShowClearDataModal(true)} style={styles.headerBackButton}>  
+             <MaterialIcons name="delete" size={30} color={colors.tint} />
+             </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {step === 'form' && (
@@ -1380,19 +1492,57 @@ Agora aguarde um entregador aceitar sua corrida.`,
               </View>
               
               <View style={styles.priceBreakdownContent}>
-                <View style={styles.priceBreakdownRow}>
-                  <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
-                    Taxa base (até 0,5km):
+                {/* Resumo dos dados */}
+                <View style={styles.priceBreakdownSection}>
+                  <Text style={[styles.priceBreakdownSectionTitle, { color: colors.text }]}>
+                    📦 Dados do Pedido
                   </Text>
-                  <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
-                    {formatPrice(priceBreakdown.basePrice)}
-                  </Text>
+                  <View style={styles.priceBreakdownRow}>
+                    <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
+                      Distância:
+                    </Text>
+                    <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
+                      {routeInfo.distKm ? `${routeInfo.distKm.toFixed(1)} km` : 'Calculando...'}
+                    </Text>
+                  </View>
+                  <View style={styles.priceBreakdownRow}>
+                    <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
+                      Peso:
+                    </Text>
+                    <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
+                      {form.pacote.pesoKg} kg
+                    </Text>
+                  </View>
+                  <View style={styles.priceBreakdownRow}>
+                    <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
+                      Frágil:
+                    </Text>
+                    <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
+                      {form.pacote.fragil ? 'Sim' : 'Não'}
+                    </Text>
+                  </View>
                 </View>
-                
+
+                <View style={[styles.priceBreakdownDivider, { backgroundColor: colors.border }]} />
+
+                {/* Detalhamento do preço */}
+                <View style={styles.priceBreakdownSection}>
+                  <Text style={[styles.priceBreakdownSectionTitle, { color: colors.text }]}>
+                    💰 Detalhamento do Preço
+                  </Text>
+                  <View style={styles.priceBreakdownRow}>
+                    <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
+                      Taxa base (até {systemConfigService.getPricingConfig().minDistanceKm}km):
+                    </Text>
+                    <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
+                      {formatPrice(priceBreakdown.basePrice)}
+                    </Text>
+                  </View>
+                </View>
                 {priceBreakdown.variablePrice > 0 && (
                   <View style={styles.priceBreakdownRow}>
                     <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
-                      Taxa por km adicional:
+                      Taxa por km adicional (R$ {systemConfigService.getPricingConfig().pricePerKm.toFixed(2).replace('.', ',')}/km):
                     </Text>
                     <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
                       {formatPrice(priceBreakdown.variablePrice)}
@@ -1400,24 +1550,24 @@ Agora aguarde um entregador aceitar sua corrida.`,
                   </View>
                 )}
                 
-                {priceBreakdown.weightMultiplier > 0 && (
+                {priceBreakdown.weightAdjustment > 0 && (
                   <View style={styles.priceBreakdownRow}>
                     <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
-                      Taxa por peso (+{priceBreakdown.weightMultiplier}%):
+                      Taxa por peso excedente ({priceBreakdown.excessWeight}kg × {priceBreakdown.weightMultiplier}% × R$ {systemConfigService.getPricingConfig().pricePerKm.toFixed(2).replace('.', ',')}):
                     </Text>
                     <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
-                      {formatPrice((priceBreakdown.basePrice + priceBreakdown.variablePrice) * (priceBreakdown.weightMultiplier / 100))}
+                      {formatPrice(priceBreakdown.weightAdjustment)}
                     </Text>
                   </View>
                 )}
                 
-                {priceBreakdown.fragilityMultiplier > 0 && (
+                {priceBreakdown.fragilityAdjustment > 0 && (
                   <View style={styles.priceBreakdownRow}>
                     <Text style={[styles.priceBreakdownLabel, { color: colors.tabIconDefault }]}>
                       Taxa por fragilidade (+{priceBreakdown.fragilityMultiplier}%):
                     </Text>
                     <Text style={[styles.priceBreakdownValue, { color: colors.text }]}>
-                      {formatPrice((priceBreakdown.basePrice + priceBreakdown.variablePrice) * (priceBreakdown.fragilityMultiplier / 100))}
+                      {formatPrice(priceBreakdown.fragilityAdjustment)}
                     </Text>
                   </View>
                 )}
@@ -1461,6 +1611,43 @@ Agora aguarde um entregador aceitar sua corrida.`,
           colors={colors}
         />
       )}
+
+      {/* Modal de Confirmação para Limpar Dados */}
+      <Modal
+        visible={showClearDataModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowClearDataModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.confirmationModal, { backgroundColor: colors.background }]}>
+            <View style={styles.confirmationHeader}>
+              <MaterialIcons name="warning" size={32} color="#ff6b6b" />
+              <Text style={[styles.confirmationTitle, { color: colors.text }]}>
+                Limpar Dados
+              </Text>
+            </View>
+            
+            <Text style={[styles.confirmationMessage, { color: colors.tabIconDefault }]}>
+              Tem certeza que deseja limpar todos os dados do formulário? Esta ação não pode ser desfeita.
+            </Text>
+            
+            <View style={styles.confirmationButtons}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                onPress={() => setShowClearDataModal(false)}
+                style={styles.confirmationButton}
+              />
+              <Button
+                title="Limpar Tudo"
+                onPress={clearAllData}
+                style={styles.clearButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1812,6 +1999,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 20,
     paddingTop: StatusBar.currentHeight,
   },
@@ -1896,6 +2084,15 @@ const styles = StyleSheet.create({
   priceBreakdownContent: {
     gap: 12,
   },
+  priceBreakdownSection: {
+    marginBottom: 8,
+  },
+  priceBreakdownSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
   priceBreakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1924,5 +2121,51 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'right',
+  },
+  // Estilos do Modal de Confirmação
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmationModal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  confirmationHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmationTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  confirmationMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  confirmationButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmationButton: {
+    flex: 1,
+  },
+  clearButton: {
+    flex: 1,
+    backgroundColor: '#ff6b6b',
   },
 });

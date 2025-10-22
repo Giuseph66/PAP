@@ -23,6 +23,12 @@ PAP permite que os clientes solicitem entregas de pacotes de qualquer local de c
 - Acompanhamento de ganhos e gestão de pagamentos
 - Comunicação no aplicativo com clientes
 
+**Para Administradores:**
+- Gerenciamento de usuários (alternar papéis entre cliente e entregador)
+- Configuração do sistema (preços, notificações, limites de envio)
+- Visualização de estatísticas e analytics do sistema
+- Teste de diferentes perfis de usuário
+
 ## 🏗️ Arquitetura e Stack Tecnológica
 
 ### Aplicações Móveis
@@ -65,6 +71,7 @@ PAP permite que os clientes solicitem entregas de pacotes de qualquer local de c
 - **Comunicação em Tempo Real**: Mensagens no aplicativo para coordenação
 - **Gerenciamento de Status**: Rastreamento abrangente do estado das entregas
 - **Painel Administrativo**: Interface web para supervisão do sistema
+- **Configuração do Sistema**: Interface para ajustar parâmetros do sistema
 - **Suporte Offline**: Cache local para melhor experiência do usuário
 
 ## 📱 Perfis de Usuário
@@ -87,6 +94,13 @@ Os entregadores têm acesso a um sistema completo de gerenciamento de entregas:
 - Coleta de comprovação de entrega (fotos/assinaturas)
 - Painel de ganhos com histórico de pagamentos
 - Métricas de desempenho e sistema de classificação
+
+### Experiência do Administrador
+Os administradores têm acesso a ferramentas poderosas para gerenciar o sistema:
+- Painel administrativo para gerenciamento de usuários
+- Configuração do sistema para ajustar parâmetros como preços, notificações e limites
+- Teste de diferentes perfis de usuário para validação
+- Visualização de estatísticas e analytics do sistema
 
 ## 🔐 Segurança e Conformidade
 

@@ -5,7 +5,13 @@ import { Loading } from '@/components/ui/loading';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
+import { avatarService } from '@/services/avatar.service';
+import { companyStatsService } from '@/services/company-stats.service';
+import { localNotificationService } from '@/services/local-notification.service';
+import { shipmentFirestoreService } from '@/services/shipment-firestore.service';
+import { supportService, SupportType } from '@/services/support.service';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import type { ComponentProps } from 'react';
 import React, { useEffect, useState } from 'react';
@@ -20,8 +26,9 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
 interface MenuItemProps {
@@ -106,7 +113,7 @@ interface UserProfile {
   role: 'cliente' | 'courier';
   perfilCompleto: boolean;
   docsVerificados: boolean;
-  memberSince: string;
+  createdAt: Date;
   avatar?: string;
   rating?: number;
   totalDeliveries?: number;
@@ -135,6 +142,20 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [formNome, setFormNome] = useState('');
   const [formTelefone, setFormTelefone] = useState('');
+  // Empresa: métricas reais
+  const [companyShipmentsCount, setCompanyShipmentsCount] = useState<number>(0);
+  const [companyTotalSpent, setCompanyTotalSpent] = useState<number>(0);
+  
+  // Modais novos
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [supportType, setSupportType] = useState<SupportType>('sugestao');
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportDescription, setSupportDescription] = useState('');
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -150,14 +171,12 @@ export default function ProfileScreen() {
           id: userData.id,
           nome: userData.nome || 'Usuário',
           email: userData.email,
+          avatar: userData.avatar,
           telefone: userData.telefone || '',
           role: userData.role as 'cliente' | 'courier',
           perfilCompleto: userData.perfilCompleto ?? false,
           docsVerificados: true, // Mock for now
-          memberSince: new Date(userData.createdAt).getFullYear().toString(),
-          rating: userData.role === 'courier' ? 4.8 : undefined,
-          totalDeliveries: userData.role === 'courier' ? 127 : undefined,
-          totalEarnings: userData.role === 'courier' ? 2450.50 : undefined,
+          createdAt: userData.createdAt,
           // Company specific fields
           cnpj: userData.cnpj,
           responsavel: userData.responsavel,
@@ -168,6 +187,34 @@ export default function ProfileScreen() {
           // Admin field
           isAdmin: userData.isAdmin,
         });
+
+        // Se empresa, carregar métricas reais
+        if (userData.role === 'cliente' && userData.id) {
+          const [shipments, fin] = await Promise.all([
+            shipmentFirestoreService.getShipmentsByClient(String(userData.id), 200),
+            companyStatsService.getFinancialStats(String(userData.id)),
+          ]);
+          setCompanyShipmentsCount(shipments.length);
+          setCompanyTotalSpent(fin.totalSpent || 0);
+        }
+
+        // Se entregador, carregar métricas reais
+        if (userData.role === 'courier' && userData.id) {
+          const courierShipments = await shipmentFirestoreService.getShipmentsByCourier(String(userData.id), 200);
+          const delivered = courierShipments.filter((s) => s.state === 'DELIVERED');
+          const totalDeliveries = delivered.length;
+          const totalEarnings = delivered.reduce((sum, s) => sum + (s.quote?.preco ?? 0), 0);
+
+          setUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  totalDeliveries,
+                  totalEarnings,
+                }
+              : prev
+          );
+        }
       } else {
         // Redirect to login screen if not authenticated
         router.replace('/auth/login');
@@ -194,33 +241,76 @@ export default function ProfileScreen() {
     setIsEditing(true);
   };
 
-  const handlePaymentMethods = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
-  };
-
+  // Notificações - apenas toggle
   const handleNotifications = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    // Switch já manipula o estado localmente
+    // Aqui você pode integrar com FCM se necessário
   };
 
+  // Suporte - Modal de reclame/sugestão
   const handleSupport = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    setSupportType('sugestao');
+    setSupportSubject('');
+    setSupportDescription('');
+    setShowSupportModal(true);
   };
 
+  // Enviar ticket de suporte
+  const handleSubmitSupport = async () => {
+    if (!supportSubject.trim() || !supportDescription.trim()) {
+      Alert.alert('Validação', 'Preenchaa todos os campos');
+      return;
+    }
+
+    try {
+      setSupportSubmitting(true);
+      const ticketId = await supportService.createTicket(
+        supportType,
+        supportSubject,
+        supportDescription,
+        'media'
+      );
+
+      Alert.alert(
+        'Sucesso',
+        `Seu ticket #${ticketId.substring(0, 8)} foi registrado. Nossa equipe analisará em breve.`
+      );
+      setShowSupportModal(false);
+      setSupportSubject('');
+      setSupportDescription('');
+    } catch (error) {
+      Alert.alert('Erro', 'Falha ao enviar ticket de suporte');
+    } finally {
+      setSupportSubmitting(false);
+    }
+  };
+
+  // Privacidade - Modal com política
   const handlePrivacy = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    setShowPrivacyModal(true);
   };
 
+  // Termos - Modal com termos
   const handleTerms = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    setShowTermsModal(true);
   };
 
+  // Segurança - Modal com informações
   const handleSecurity = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    setShowSecurityModal(true);
   };
 
   const handleHistory = () => {
-    Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+    if (user?.role === 'cliente') {
+      router.push('/telas_extras/shipments');
+    } else {
+      router.push('/telas_extras/courier-history');
+    }
   };
+
+  // const handleSettings = () => {
+  //   Alert.alert('Info', 'Funcionalidade em desenvolvimento');
+  // };
 
   const handleSwitchRole = () => {
     if (!user) return;
@@ -288,33 +378,85 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Excluir Conta',
-      'Esta ação é irreversível. Todos os seus dados serão permanentemente removidos.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Info', 'Funcionalidade em desenvolvimento');
-          },
-        },
-      ]
-    );
-  };
-
-  const handleChangeAvatar = () => {
+  // Avatar - Camera/Galeria
+  const handleChangeAvatar = async () => {
     Alert.alert(
       'Alterar Foto',
       'Escolha uma opção',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Câmera', onPress: () => Alert.alert('Info', 'Funcionalidade em desenvolvimento') },
-        { text: 'Galeria', onPress: () => Alert.alert('Info', 'Funcionalidade em desenvolvimento') },
+        { 
+          text: 'Câmera',
+          onPress: () => pickImageFromCamera()
+        },
+        { 
+          text: 'Galeria', 
+          onPress: () => pickImageFromGallery()
+        },
       ]
     );
+  };
+
+  const pickImageFromCamera = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        await uploadAvatarDirect(asset.base64, asset.uri);
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Falha ao acessar câmera');
+    }
+  };
+
+  const pickImageFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        await uploadAvatarDirect(asset.base64, asset.uri);
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Falha ao acessar galeria');
+    }
+  };
+
+  const uploadAvatarDirect = async (rawBase64?: string | null, imageUri?: string) => {
+    try {
+      setAvatarLoading(true);
+      if (!rawBase64) {
+        throw new Error('Não foi possível ler a imagem. Tente novamente.');
+      }
+      const dataUrl = `data:image/jpeg;base64,${rawBase64}`;
+
+      if (avatarService.isOverLimit(dataUrl)) {
+        Alert.alert('Imagem grande', 'A imagem selecionada excede 1MB mesmo com compressão. Escolha uma imagem menor.');
+        return;
+      }
+
+      await avatarService.saveAvatar(dataUrl);
+      setUser(prev => prev ? { ...prev, avatar: dataUrl } : prev);
+      Alert.alert('Sucesso', 'Foto de perfil atualizada');
+    } catch (error) {
+      console.error('Erro ao fazer upload de avatar:', error);
+      Alert.alert('Erro', (error as Error)?.message || 'Falha ao atualizar foto de perfil');
+    } finally {
+      setAvatarLoading(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -336,7 +478,24 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
-
+  
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  };
+  
+  
+    const formatDate = (date: Date | string) => {
+      try {
+        const dateObj = date instanceof Date ? date : new Date(date);
+        if (isNaN(dateObj.getTime())) {
+          return 'Data inválida';
+        }
+        return new Intl.DateTimeFormat('pt-BR').format(dateObj);
+      } catch (error) {
+        console.error('Error formatting date:', error);
+        return 'Data inválida';
+      }
+    };
   if (loading) {
     return <Loading />;
   }
@@ -403,7 +562,7 @@ export default function ProfileScreen() {
                 </View>
               )}
               <Text style={[styles.memberSince, { color: colors.tabIconDefault }]}>
-                Membro desde {user.memberSince}
+                Membro desde {formatDate(user.createdAt)}
               </Text>
             </View>
             {user.role === 'courier' && user.rating && (
@@ -427,6 +586,38 @@ export default function ProfileScreen() {
           icon={<MaterialIcons name="edit" size={16} color={colors.tint} />}
         />
       </Card>
+
+      {/* Seção de Teste de Notificações (Local) */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Teste de Notificações</Text>
+        <Card style={styles.menuCard}>
+          <View style={{ flexDirection: 'row', gap: 12, padding: 16 }}>
+            <Button
+              title="Teste imediato"
+              onPress={async () => {
+                try {
+                  await localNotificationService.register();
+                  await localNotificationService.sendNow('Teste Imediato', 'Notificação enviada agora');
+                } catch (e) {
+                  Alert.alert('Notificações', 'Falha ao enviar: ' + String((e as Error)?.message || e));
+                }
+              }}
+            />
+            <Button
+              title="Teste em 10s"
+              onPress={async () => {
+                try {
+                  await localNotificationService.register();
+                  await localNotificationService.scheduleIn(10, 'Teste em 10s', 'Você deve receber essa notificação em 10 segundos');
+                  Alert.alert('Notificações', 'Agendada para 10s. Você pode fechar o app.');
+                } catch (e) {
+                  Alert.alert('Notificações', 'Falha ao agendar: ' + String((e as Error)?.message || e));
+                }
+              }}
+            />
+          </View>
+        </Card>
+      </View>
 
       {/* Company Information Section */}
       {user.role === 'cliente' && (
@@ -461,7 +652,32 @@ export default function ProfileScreen() {
           </Card>
         </View>
       )}
-
+      {/* Teste de telas extras 
+      <View style={styles.teste_telas_extras} >
+        <Text>Teste de telas extras</Text>
+        <Button
+          title="QR Scanner"
+          onPress={() => {router.push('/confirmacao/qr-scanner')}}
+          variant="outline"
+          size="sm"
+          icon={<MaterialIcons name="arrow-right" size={16} color={colors.tint} />}
+        />
+        <Button
+          title="QR Display"
+          onPress={() => {router.push('/confirmacao/qr-display')}}
+          variant="outline"
+          size="sm"
+          icon={<MaterialIcons name="arrow-right" size={16} color={colors.tint} />}
+        />
+        <Button
+          title="Confirmation Success"
+          onPress={() => {router.push('/confirmacao/confirmation-success')}}
+          variant="outline"
+          size="sm"
+          icon={<MaterialIcons name="arrow-right" size={16} color={colors.tint} />}
+        />
+      </View>
+        */}
       {/* Courier Information Section */}
       {user.role === 'courier' && (
         <View style={styles.section}>
@@ -544,7 +760,7 @@ export default function ProfileScreen() {
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <MaterialIcons name="local-shipping" size={24} color={colors.tint} />
               <Text style={[styles.statNumber, { color: colors.text }]}>
-                42
+                {companyShipmentsCount}
               </Text>
               <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>
                 Envios
@@ -553,7 +769,7 @@ export default function ProfileScreen() {
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <MaterialIcons name="attach-money" size={24} color="#10b981" />
               <Text style={[styles.statNumber, { color: colors.text }]}>
-                R$ 1.240,50
+                {formatCurrency(companyTotalSpent)}
               </Text>
               <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>
                 Gastos
@@ -583,13 +799,6 @@ export default function ProfileScreen() {
             title="Informações Pessoais"
             subtitle="Nome, telefone, documentos"
             onPress={handleEditProfile}
-          />
-          <View style={styles.separator} />
-          <MenuItem
-            icon="creditcard"
-            title="Formas de Pagamento"
-            subtitle="Cartões e PIX"
-            onPress={handlePaymentMethods}
           />
           <View style={styles.separator} />
           <MenuItem
@@ -645,13 +854,15 @@ export default function ProfileScreen() {
             }
             showArrow={false}
           />
+          {/* 
           <View style={styles.separator} />
           <MenuItem
             icon="settings"
             title="Configurações"
             subtitle="Personalizar experiência"
-            onPress={() => Alert.alert('Info', 'Funcionalidade em desenvolvimento')}
+            onPress={() => handleSettings()}
           />
+          */}
         </Card>
       </View>
 
@@ -692,10 +903,10 @@ export default function ProfileScreen() {
             />
             <View style={styles.separator} />
             <MenuItem
-              icon="bug-report"
-              title="Modo Teste"
-              subtitle="Testar diferentes funcionalidades"
-              onPress={handleTestMode}
+              icon="admin-panel-settings"
+              title="Painel Administrativo"
+              subtitle="Gerenciar usuários e configurações"
+              onPress={() => router.push('/telas_extras/admin-panel')}
             />
           </Card>
         </View>
@@ -730,15 +941,6 @@ export default function ProfileScreen() {
           fullWidth
           icon={<MaterialIcons name="logout" size={16} color={colors.tint} />}
         />
-        
-        <Button
-          title="Excluir Conta"
-          variant="danger"
-          onPress={handleDeleteAccount}
-          fullWidth
-          style={styles.deleteButton}
-          icon={<MaterialIcons name="delete" size={16} color="#ffffff" />}
-        />
       </View>
 
       <View style={styles.footer}>
@@ -749,6 +951,304 @@ export default function ProfileScreen() {
           © 2025 Todos os direitos reservados
         </Text>
       </View>
+
+      {/* MODAL: Suporte */}
+      <Modal
+        visible={showSupportModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowSupportModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Enviar Mensagem</Text>
+              <TouchableOpacity onPress={() => setShowSupportModal(false)}>
+                <MaterialIcons name="close" size={22} color={colors.tabIconDefault} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Tipo de Mensagem</Text>
+              <View style={styles.typePicker}>
+                {(['reclamacao', 'sugestao', 'duvida', 'bug'] as SupportType[]).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => setSupportType(type)}
+                    style={[
+                      styles.typeButton,
+                      {
+                        backgroundColor: supportType === type ? colors.tint : colors.background,
+                        borderColor: supportType === type ? colors.tint : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: supportType === type ? '#fff' : colors.text },
+                      ]}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.modalLabel, { color: colors.text, marginTop: 16 }]}>Assunto</Text>
+              <Input
+                placeholder="Título ou resumo"
+                value={supportSubject}
+                onChangeText={setSupportSubject}
+                editable={!supportSubmitting}
+              />
+
+              <Text style={[styles.modalLabel, { color: colors.text, marginTop: 12 }]}>Descrição</Text>
+              <TextInput
+                style={[
+                  styles.descriptionInput,
+                  { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+                ]}
+                placeholder="Descreva seu problema ou sugestão"
+                placeholderTextColor={colors.tabIconDefault}
+                multiline
+                numberOfLines={6}
+                value={supportDescription}
+                onChangeText={setSupportDescription}
+                editable={!supportSubmitting}
+              />
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                onPress={() => setShowSupportModal(false)}
+                disabled={supportSubmitting}
+              />
+              <Button
+                title={supportSubmitting ? 'Enviando...' : 'Enviar'}
+                onPress={handleSubmitSupport}
+                disabled={supportSubmitting}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: Segurança */}
+      <Modal
+        visible={showSecurityModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowSecurityModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Informações de Segurança</Text>
+              <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
+                <MaterialIcons name="close" size={22} color={colors.tabIconDefault} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.securitySection}>
+                <MaterialIcons name="lock" size={24} color={colors.tint} />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={[styles.securityTitle, { color: colors.text }]}>Senha Segura</Text>
+                  <Text style={[styles.securityText, { color: colors.tabIconDefault }]}>
+                    Sua senha é salva usando algoritmos SHA-256 com salt único para cada usuário. É impossível para qualquer pessoa visualizar sua senha original.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.securitySection}>
+                <MaterialIcons name="location-on" size={24} color={colors.tint} />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={[styles.securityTitle, { color: colors.text }]}>Localização Privada</Text>
+                  <Text style={[styles.securityText, { color: colors.tabIconDefault }]}>
+                    Sua localização é usada exclusivamente para rastreamento durante entregas. Nunca é compartilhada, vendida ou exposta publicamente. Os dados são criptografados em trânsito.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.securitySection}>
+                <MaterialIcons name="security" size={24} color={colors.tint} />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={[styles.securityTitle, { color: colors.text }]}>Encriptação de Dados</Text>
+                  <Text style={[styles.securityText, { color: colors.tabIconDefault }]}>
+                    Todos os seus dados pessoais, informações de contato e histórico são criptografados usando padrão industrial de ponta a ponta. Somente você e sistemas autorizados podem acessar.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.securitySection}>
+                <MaterialIcons name="verified-user" size={24} color={colors.tint} />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={[styles.securityTitle, { color: colors.text }]}>Conformidade Legal</Text>
+                  <Text style={[styles.securityText, { color: colors.tabIconDefault }]}>
+                    Nossa plataforma está em conformidade com LGPD e normas de proteção de dados. Seus direitos são protegidos por lei.
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button
+                title="Entendi"
+                onPress={() => setShowSecurityModal(false)}
+                fullWidth
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: Privacidade */}
+      <Modal
+        visible={showPrivacyModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowPrivacyModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Política de Privacidade</Text>
+              <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
+                <MaterialIcons name="close" size={22} color={colors.tabIconDefault} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>1. Coleta de Dados</Text>
+                {'\n\n'}Coletamos informações pessoais quando você se registra, como nome, email, telefone e endereço para processar suas solicitações de entrega. Para entregadores, também coletamos informações de documentos para verificação KYC.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>2. Uso de Dados</Text>
+                {'\n\n'}Seus dados são usados para: fornecer serviços de entrega, processar pagamentos, comunicar atualizações, e melhorar nossos serviços. Nunca vendemos seus dados para terceiros.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>3. Segurança de Dados</Text>
+                {'\n\n'}Implementamos criptografia de ponta a ponta, hashing seguro de senhas e armazenamento seguro em servidores certificados. Sua privacidade é nossa prioridade.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>4. Informações Específicas para Entregadores</Text>
+                {'\n\n'}Sua localização durante entregas é rastreada para segurança e comprovação de entrega, não é exposta ao público. Dados de ganhos e pagamentos são protegidos com mesmo nível de segurança.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>5. Conformidade com Legislação</Text>
+                {'\n\n'}Estamos em total conformidade com a Lei Geral de Proteção de Dados (LGPD). Você tem direito a acessar, corrigir ou solicitar exclusão de seus dados.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>6. Contato</Text>
+                {'\n\n'}Para questões sobre privacidade, entre em contato através da seção de suporte deste aplicativo.
+              </Text>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button
+                title="Concordo"
+                onPress={() => setShowPrivacyModal(false)}
+                fullWidth
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: Termos de Uso */}
+      <Modal
+        visible={showTermsModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Termos de Uso</Text>
+              <TouchableOpacity onPress={() => setShowTermsModal(false)}>
+                <MaterialIcons name="close" size={22} color={colors.tabIconDefault} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>1. Aceitação dos Termos</Text>
+                {'\n\n'}Ao usar o aplicativo PAP (Ponto a Ponto), você concorda com estes termos. Se não concorda, não use a plataforma.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>2. Serviço de Entregas</Text>
+                {'\n\n'}PAP conecta clientes e entregadores para serviços de entrega sob demanda. Não somos responsáveis por danos, perdas ou atrasos além do nosso controle.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>3. Pagamentos e Tarifas</Text>
+                {'\n\n'}Os pagamentos são gerenciados integralmente pela plataforma PAP através de métodos seguros.
+                {user?.role === 'courier' && (
+                  <>
+                    {'\n\n'}<Text style={{ fontWeight: 'bold' }}>Para Entregadores:</Text>
+                    {'\n'}- Sua solicitação de pagamento é feita através da aba "Financeiro"
+                    {'\n'}- Saque no mesmo dia: aplicamos taxa de <Text style={{ fontWeight: 'bold' }}>10%</Text> sobre o valor
+                    {'\n'}- Saque em até 30 dias: taxa reduzida para <Text style={{ fontWeight: 'bold' }}>5%</Text> sobre o valor
+                    {'\n'}- Após 30 dias: a taxa permanece em <Text style={{ fontWeight: 'bold' }}>5%</Text>
+                    {'\n\n'}Exemplo: Se você ganhou R$ 100,00
+                    {'\n'}• Saque imediato: recebe R$ 90,00 (R$ 10,00 de taxa)
+                    {'\n'}• Saque em 30 dias: recebe R$ 95,00 (R$ 5,00 de taxa)
+                  </>
+                )}
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>4. Responsabilidades do Entregador</Text>
+                {'\n\n'}Você concorda em entregar pacotes com segurança, respeitar as instruções do cliente, manter o veículo em bom estado e fornecer serviço profissional.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>5. Responsabilidades do Cliente</Text>
+                {'\n\n'}Você concorda em fornecer informações precisas, pagar pelo serviço, e não enviar itens proibidos ou perigosos.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>6. Cancelamento de Contas</Text>
+                {'\n\n'}Você pode solicitar cancelamento a qualquer momento. Saldos pendentes serão processados conforme a política de saque vigente.
+              </Text>
+
+              <Text style={[styles.policySection, { color: colors.text }]}>
+                <Text style={{ fontWeight: 'bold' }}>7. Limitação de Responsabilidade</Text>
+                {'\n\n'}PAP não é responsável por perdas indiretas, consequenciais ou punitivas. Responsabilidade limitada ao valor pago pelo serviço.
+              </Text>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button
+                title="Concordo"
+                onPress={() => setShowTermsModal(false)}
+                fullWidth
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Loading ao salvar avatar */}
+      <Modal visible={avatarLoading} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { alignItems: 'center', gap: 12 }]}> 
+            <MaterialIcons name="hourglass-top" size={28} color={colors.tint} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Salvando foto...</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit Profile Modal */}
       <Modal
@@ -1116,5 +1616,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 12,
+  },
+  teste_telas_extras: {
+    padding: 20,
+    backgroundColor: 'red',
+    borderRadius: 10,
+    margin: 20,
+  },
+  modalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  typePicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  typeButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginHorizontal: 8,
+    marginVertical: 4,
+  },
+  typeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  descriptionInput: {
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  securitySection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  securityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  securityText: {
+    fontSize: 14,
+  },
+  policySection: {
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 16,
   },
 });

@@ -3,6 +3,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
 import { locationService } from '@/services/location.service';
+import { ShipmentDocument, shipmentFirestoreService } from '@/services/shipment-firestore.service';
 import { AuthUser, CourierLocation } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
@@ -48,6 +49,8 @@ export default function BusinessMapHomeScreen() {
 
   const mapRef = useRef<MapView | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const [shipments, setShipments] = useState<ShipmentDocument[]>([]);
   // Load current location and nearby couriers
   const loadData = async (refresh = false) => {
     if (refresh) {
@@ -82,6 +85,11 @@ export default function BusinessMapHomeScreen() {
         };
         setUser(userData);
       }
+      // Carregar envios reais do cliente para cards e atividades
+      if (session?.userId) {
+        const clientShipments = await shipmentFirestoreService.getShipmentsByClient(session.userId, 50);
+        setShipments(clientShipments);
+      }
       
       // Solicitar permissões de localização primeiro
       const hasPermission = await locationService.requestLocationPermissions();
@@ -114,8 +122,8 @@ export default function BusinessMapHomeScreen() {
         longitudeDelta: 0.02,
       });
       
-      // Mock nearby couriers (in a real app, this would come from the backend)
-      const mockCouriers: NearbyCourier[] = [
+      //Simule entregadores próximos (em um aplicativo real, isso viria do backend)
+      /*const mockCouriers: NearbyCourier[] = [
         {
           uid: 'courier1',
           name: 'Carlos Silva',
@@ -214,9 +222,9 @@ export default function BusinessMapHomeScreen() {
             geohash: ''
           }
         }
-      ];
+      ];*/
       
-      setNearbyCouriers(mockCouriers);
+      //setNearbyCouriers(mockCouriers);
     } catch (err) {
       console.error('Error loading data:', err);
       Alert.alert('Erro', 'Não foi possível carregar sua localização');
@@ -235,10 +243,24 @@ export default function BusinessMapHomeScreen() {
       setRefreshing(false);
     }
   };
-
+  
   // Initial load
   useEffect(() => {
     loadData();
+    handleCenterMap();
+  }, []);
+
+  // Quando a localização atual for carregada, centraliza o mapa
+  useEffect(() => {
+    if (currentLocation && mapRef.current) {
+      handleCenterMap();
+    }
+  }, [currentLocation]);
+
+  // Desativa tracking visual dos markers após a primeira pintura para performance
+  useEffect(() => {
+    const t = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(t);
   }, []);
 
   const handleRefresh = () => {
@@ -255,6 +277,29 @@ export default function BusinessMapHomeScreen() {
       }, 1000);
     }
   };
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  const formatRelativeTime = (date: Date) => {
+    const now = new Date().getTime();
+    const diffMs = now - date.getTime();
+    const min = Math.floor(diffMs / 60000);
+    if (min < 1) return 'Agora';
+    if (min < 60) return `Há ${min} min`;
+    const hrs = Math.floor(min / 60);
+    if (hrs < 24) return `Há ${hrs} h`;
+    const days = Math.floor(hrs / 24);
+    return `Há ${days} d`;
+  };
+
+  const shipmentsTodayCount = shipments.filter(s => {
+    const d = s.createdAt;
+    const now = new Date();
+    return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  const recentShipments = shipments.slice(0, 3);
 
   const handleCreateShipment = () => {
     router.push('/pedir/create-shipment');
@@ -296,14 +341,12 @@ export default function BusinessMapHomeScreen() {
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
           initialRegion={mapRegion}
-          region={mapRegion}
           showsUserLocation={true}
           showsMyLocationButton={false}
           showsCompass={true}
           showsScale={true}
           rotateEnabled={true}
           pitchEnabled={true}
-          onRegionChangeComplete={(region) => setMapRegion(region)}
         >
           {/* Current location marker (business) */}
           {currentLocation && (
@@ -313,6 +356,7 @@ export default function BusinessMapHomeScreen() {
                 longitude: currentLocation.longitude,
               }}
               title="Sua empresa"
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={[styles.businessMarker, { backgroundColor: colors.tint }]}>
                 <MaterialIcons name="business" size={24} color="#fff" />
@@ -330,6 +374,7 @@ export default function BusinessMapHomeScreen() {
               }}
               title={courier.name}
               description={`${courier.vehicle} • Avaliação: ${courier.rating}`}
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={[styles.courierMarker, { backgroundColor: getVehicleColor(courier.vehicle) }]}>
                 <MaterialIcons 
@@ -351,6 +396,18 @@ export default function BusinessMapHomeScreen() {
             <MaterialIcons name="my-location" size={24} color={colors.tint} />
           </TouchableOpacity>
         </View>
+        {/*  botao minhas entregas com a logo de caminhao */}
+        <View style={styles.myDeliveriesButton}>
+          <TouchableOpacity 
+            style={[styles.myDeliveriesButton, { backgroundColor: colors.background }]}
+            onPress={handleViewShipments}
+          >
+            <MaterialIcons name="local-shipping" size={24} color={colors.tint} />
+          </TouchableOpacity>
+        </View>
+
+
+        
         <View style={styles.addCourierButton}>
           <TouchableOpacity 
             style={[styles.addCourierButton, { backgroundColor: colors.background }]}
@@ -360,7 +417,8 @@ export default function BusinessMapHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Stats Overlay */}
+        {/* app bar mostrando entregadores proximos e tempo medio de entrega 
+        emplementar furturamento de entregadores proximos e tempo medio de entrega
         <View style={styles.statsOverlay}>
           <View style={[styles.statsCard, { backgroundColor: `${colors.background}dd` }]}>
             <View style={styles.statItem}>
@@ -386,6 +444,7 @@ export default function BusinessMapHomeScreen() {
             </View>
           </View>
         </View>
+              */}
       </View>
 
       {/* Scrollable Content Section - Overlay on Map */}
@@ -398,9 +457,11 @@ export default function BusinessMapHomeScreen() {
       >
         <View style={[styles.footer, { backgroundColor: colors.background }]}>
           <View style={styles.footerHeader}>
+            {user && (
             <Text style={[styles.welcomeText, { color: colors.text }]}>
               Olá, {user?.nome}!
             </Text>
+            )}
             <TouchableOpacity onPress={handleViewProfile}>
               <MaterialIcons name="business" size={28} color={colors.tint} />
             </TouchableOpacity>
@@ -410,16 +471,18 @@ export default function BusinessMapHomeScreen() {
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: colors.background }]}>
               <MaterialIcons name="local-shipping" size={24} color={colors.tint} />
-              <Text style={[styles.statValue, { color: colors.text }]}>12</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{shipmentsTodayCount}</Text>
               <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>Envios hoje</Text>
             </View>
-            
+            {/* tempo medio de entrega 
+            implementar futuramento de tempo medio de entrega
             <View style={[styles.statCard, { backgroundColor: colors.background }]}>
               <MaterialIcons name="schedule" size={24} color={colors.tint} />
               <Text style={[styles.statValue, { color: colors.text }]}>28min</Text>
               <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>Tempo médio</Text>
             </View>
-            
+            */}
+            {/* avaliação */}
             <View style={[styles.statCard, { backgroundColor: colors.background }]}>
               <MaterialIcons name="star" size={24} color="#FFD700" />
               <Text style={[styles.statValue, { color: colors.text }]}>4.8</Text>
@@ -434,56 +497,50 @@ export default function BusinessMapHomeScreen() {
             </Text>
             
             <View style={styles.activityList}>
-              <View style={[styles.activityItem, { backgroundColor: colors.background }]}>
-                <View style={[styles.activityIcon, { backgroundColor: '#4CAF50' }]}>
-                  <MaterialIcons name="check-circle" size={20} color="#fff" />
+              {recentShipments.map((s) => {
+                const isDelivered = s.state === 'DELIVERED';
+                const iconBg = isDelivered ? '#4CAF50' : '#FF9800';
+                const iconName = isDelivered ? 'check-circle' : 'local-shipping';
+                const priceColor = isDelivered ? '#4CAF50' : colors.tint;
+                const title = isDelivered ? `Entrega concluída` : `Envio em andamento`;
+                const value = formatCurrency(s.quote?.preco || 0);
+                const when = formatRelativeTime(s.updatedAt || s.createdAt);
+                const from = s.pickup?.endereco?.split(',')[0] || 'Origem';
+                const to = s.dropoff?.endereco?.split(',')[0] || 'Destino';
+                return (
+                  <View key={s.id} style={[styles.activityItem, { backgroundColor: colors.background }]}> 
+                    <View style={[styles.activityIcon, { backgroundColor: iconBg }]}> 
+                      <MaterialIcons name={iconName as any} size={20} color="#fff" /> 
+                    </View> 
+                    <View style={styles.activityContent}> 
+                      <Text style={[styles.activityTitle, { color: colors.text }]} numberOfLines={1}> 
+                        {title}: {from} → {to}
+                      </Text> 
+                      <Text style={[styles.activityTime, { color: colors.tabIconDefault }]}> 
+                        {when}
+                      </Text> 
+                    </View> 
+                    <Text style={[styles.activityPrice, { color: priceColor }]}> 
+                      {value}
+                    </Text> 
+                  </View>
+                );
+              })}
+              {recentShipments.length === 0 && (
+                <View style={[styles.activityItem, { backgroundColor: colors.background }]}> 
+                  <View style={[styles.activityIcon, { backgroundColor: colors.tabIconDefault }]}> 
+                    <MaterialIcons name="info" size={20} color="#fff" /> 
+                  </View> 
+                  <View style={styles.activityContent}> 
+                    <Text style={[styles.activityTitle, { color: colors.text }]}> 
+                      Nenhuma atividade recente
+                    </Text> 
+                    <Text style={[styles.activityTime, { color: colors.tabIconDefault }]}> 
+                      Crie um novo envio para começar
+                    </Text> 
+                  </View> 
                 </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: colors.text }]}>
-                    Envio #1234 entregue
-                  </Text>
-                  <Text style={[styles.activityTime, { color: colors.tabIconDefault }]}>
-                    Há 15 minutos
-                  </Text>
-                </View>
-                <Text style={[styles.activityPrice, { color: '#4CAF50' }]}>
-                  R$ 15,50
-                </Text>
-              </View>
-
-              <View style={[styles.activityItem, { backgroundColor: colors.background }]}>
-                <View style={[styles.activityIcon, { backgroundColor: '#FF9800' }]}>
-                  <MaterialIcons name="local-shipping" size={20} color="#fff" />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: colors.text }]}>
-                    Envio #1235 em trânsito
-                  </Text>
-                  <Text style={[styles.activityTime, { color: colors.tabIconDefault }]}>
-                    Há 1 hora
-                  </Text>
-                </View>
-                <Text style={[styles.activityPrice, { color: colors.tint }]}>
-                  R$ 22,00
-                </Text>
-              </View>
-
-              <View style={[styles.activityItem, { backgroundColor: colors.background }]}>
-                <View style={[styles.activityIcon, { backgroundColor: '#2196F3' }]}>
-                  <MaterialIcons name="add" size={20} color="#fff" />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: colors.text }]}>
-                    Novo envio criado
-                  </Text>
-                  <Text style={[styles.activityTime, { color: colors.tabIconDefault }]}>
-                    Há 2 horas
-                  </Text>
-                </View>
-                <Text style={[styles.activityPrice, { color: colors.tint }]}>
-                  R$ 18,50
-                </Text>
-              </View>
+              )}
             </View>
           </View>
 
@@ -492,7 +549,7 @@ export default function BusinessMapHomeScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Ações Rápidas
             </Text>
-            
+            {/* implementar futuramento de ações rápidas
             <View style={styles.actionsGrid}>
               <TouchableOpacity 
                 style={[styles.quickActionCard, { backgroundColor: colors.background }]}
@@ -534,8 +591,8 @@ export default function BusinessMapHomeScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+            */}
           </View>
-          
           <View style={styles.actionButtons}>
             <Button
               title="Criar Envio"
@@ -576,7 +633,8 @@ const styles = StyleSheet.create({
   },
   mapControls: {
     position: 'absolute',
-    top: StatusBar.currentHeight ? StatusBar.currentHeight + 120 : 120,
+    //top: StatusBar.currentHeight ? StatusBar.currentHeight + 120 : 120, tamanho para quando o app bar estiver visivel
+    top: StatusBar.currentHeight ? StatusBar.currentHeight + 20 : 20,
     right: 16,
     gap: 12,
   },
@@ -792,5 +850,13 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
+  },
+  myDeliveriesButton: {
+    position: 'absolute',
+    top: '62%',
+    borderRadius: 50,
+    padding: 12,
+    left: 10,
+    gap: 12,
   },
 });

@@ -14,15 +14,16 @@ import { deleteField } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 interface RideNavigation {
   id: string;
@@ -64,6 +65,7 @@ export default function RideNavigationScreen() {
   }>();
 
   const mapRef = useRef<MapView | null>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const [ride, setRide] = useState<RideNavigation | null>(null);
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -84,6 +86,20 @@ export default function RideNavigationScreen() {
   const [abandonReason, setAbandonReason] = useState('');
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [shipmentData, setShipmentData] = useState<any>(null);
+  const [isInfoCollapsed, setIsInfoCollapsed] = useState(false);
+  const collapseAnim = useRef(new Animated.Value(0)).current;
+  // Flag de desenvolvimento: quando true, ignora proximidade para coletar/entregar
+  const DEV = false;
+
+  const toggleInfoPanel = () => {
+    const toValue = isInfoCollapsed ? 0 : 1;
+    setIsInfoCollapsed(!isInfoCollapsed);
+    Animated.timing(collapseAnim, {
+      toValue,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  };
 
   // Função para calcular distância entre duas coordenadas (Haversine)
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -361,6 +377,12 @@ export default function RideNavigationScreen() {
     setRide(rideData);
   }, [params.rideId, params.passengerName, params.passengerPhone, params.pickupAddress, params.pickupLat, params.pickupLng, params.destinationAddress, params.destinationLat, params.destinationLng, params.etaToPickup, params.etaToDestination]);
 
+  // Desativa tracking visual dos markers após primeira renderização
+  useEffect(() => {
+    const t = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(t);
+  }, []);
+
   // Carrega dados completos do shipment quando a corrida estiver pronta
   useEffect(() => {
     if (ride) {
@@ -418,7 +440,7 @@ export default function RideNavigationScreen() {
     if (!ride) return;
     
     // Verifica se está próximo o suficiente do pickup
-    if (!isNearPickup) {
+    if (!isNearPickup && !DEV) {
       Alert.alert(
         Translations.too_far_pickup,
         `Você está a ${distanceToPickup ? (distanceToPickup * 1000).toFixed(0) : 'N/A'} metros da coleta. Aproxime-se mais para confirmar a chegada.`,
@@ -473,31 +495,23 @@ export default function RideNavigationScreen() {
     if (!ride) return;
     
     // Verifica se está próximo o suficiente do destino
-    if (!isNearDestination) {
+    /*
+    if (!isNearDestination && !DEV) {
       Alert.alert(
         Translations.too_far_destination,
         `Você está a ${distanceToDestination ? (distanceToDestination * 1000).toFixed(0) : 'N/A'} metros da entrega. Aproxime-se mais para finalizar a entrega.`,
         [{ text: 'OK' }]
       );
       return;
-    }
+    }*/
     
-    const newStatus = 'completed';
-    setRide(prev => prev ? { ...prev, status: newStatus } : null);
-    
-    // Salva no banco de dados
-    await saveRideState(newStatus);
-    
-    Alert.alert(
-      Translations.trip_completed_title,
-      Translations.trip_completed_message,
-      [
-        {
-          text: 'OK',
-          onPress: () => router.replace('/(tabs)/courier/courier-home')
-        }
-      ]
-    );
+    // Força fluxo de confirmação via QR antes de finalizar
+    router.push({
+      pathname: '/confirmacao/qr-scanner',
+      params: {
+        shipmentId: ride.id,
+      }
+    });
   };
 
   const handleCallPassenger = () => {
@@ -672,7 +686,7 @@ export default function RideNavigationScreen() {
               styles.actionButton,
               isNearPickup ? {} : { opacity: 0.6 }
             ] as any}
-            disabled={!isNearPickup}
+            disabled={!isNearPickup && !DEV}
           />
         );
       case 'arrived_at_pickup':
@@ -695,9 +709,9 @@ export default function RideNavigationScreen() {
             icon={<MaterialIcons name="check" size={16} color="#fff" />}
             style={[
               styles.actionButton,
-              isNearDestination ? {} : { opacity: 0.6 }
+              isNearDestination && !DEV ? {} : { opacity: 0.6 }
             ] as any}
-            disabled={!isNearDestination}
+            //disabled={!isNearDestination && !DEV}
           />
         );
       default:
@@ -717,6 +731,7 @@ export default function RideNavigationScreen() {
       {/* Mapa */}
       <View style={styles.mapContainer}>
         <MapView
+          provider={PROVIDER_GOOGLE}
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={{
@@ -731,6 +746,7 @@ export default function RideNavigationScreen() {
             <Marker
               coordinate={currentLocation}
               title="Sua localização"
+              tracksViewChanges={tracksViewChanges}
             >
               <View style={styles.currentLocationMarker}>
                 <View style={styles.currentLocationDot} />
@@ -742,6 +758,7 @@ export default function RideNavigationScreen() {
           <Marker
             coordinate={ride.pickup.coordinates}
             title="Ponto de Retirada"
+            tracksViewChanges={tracksViewChanges}
           >
             <View style={styles.pickupMarker}>
               <MaterialIcons name="my-location" size={24} color="#fff" />
@@ -752,6 +769,7 @@ export default function RideNavigationScreen() {
           <Marker
             coordinate={ride.destination.coordinates}
             title="Destino"
+            tracksViewChanges={tracksViewChanges}
           >
             <View style={styles.destinationMarker}>
               <MaterialIcons name="place" size={24} color="#fff" />
@@ -809,8 +827,30 @@ export default function RideNavigationScreen() {
         </View>
       </View>
 
-      {/* Card de informações */}
-      <View style={[styles.infoCard, { backgroundColor: colors.background }]}>
+      {/* Card de informações (minimizável) */}
+      <Animated.View
+        style={[
+          styles.infoCard,
+          { 
+            backgroundColor: colors.background,
+            transform: [{
+              translateY: collapseAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 220] as unknown as string[], // desliza para baixo quando colapsado
+              })
+            }]
+          }
+        ]}
+      >
+        {/* Handle de colapso/expansão */}
+        <View style={styles.infoCardHandleRow}>
+          <TouchableOpacity style={styles.handlePill} activeOpacity={0.7} onPress={toggleInfoPanel}>
+            <MaterialIcons name={isInfoCollapsed ? 'expand-less' : 'expand-more'} size={20} color={colors.text} />
+            <Text style={[styles.handleText, { color: colors.text }]}>
+              {isInfoCollapsed ? 'Mostrar detalhes' : 'Ocultar detalhes'}
+            </Text>
+          </TouchableOpacity>
+        </View>
         {/* Status e ETA */}
         <View style={styles.statusSection}>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
@@ -914,7 +954,7 @@ export default function RideNavigationScreen() {
 
         {/* Botão de ação */}
         {getActionButton()}
-      </View>
+      </Animated.View>
 
       {/* Botão flutuante para atualizar localização */}
       <TouchableOpacity 
@@ -1038,6 +1078,34 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 34, // Safe area bottom
+  },
+  infoCardHandleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  handlePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.06)'
+  },
+  handleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  collapsedSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  collapsedEta: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   statusSection: {
     flexDirection: 'row',
