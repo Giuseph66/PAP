@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import type { ComponentProps } from 'react';
 import React, { useEffect, useState } from 'react';
+import Constants from 'expo-constants';
 import {
   Alert,
   Dimensions,
@@ -588,6 +589,7 @@ export default function ProfileScreen() {
       </Card>
 
       {/* Seção de Teste de Notificações (Local) */}
+      {user.isAdmin && (
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Teste de Notificações</Text>
         <Card style={styles.menuCard}>
@@ -615,9 +617,21 @@ export default function ProfileScreen() {
                 }
               }}
             />
-          </View>
-        </Card>
-      </View>
+            </View>
+
+      {/* Botão de Versionamento e Manutenção */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+      <Button
+        title="📦 Versão & Manutenção"
+        onPress={() => router.push('/telas_extras/version-management')}
+        variant="secondary"
+        icon={<MaterialIcons name="settings-backup-restore" size={16} color={colors.text} />}
+      />
+    </View>
+          </Card>
+        </View>
+
+      )}
 
       {/* Company Information Section */}
       {user.role === 'cliente' && (
@@ -945,7 +959,7 @@ export default function ProfileScreen() {
 
       <View style={styles.footer}>
         <Text style={[styles.version, { color: colors.tabIconDefault }]}>
-          P A P (Ponto a Ponto) v1.0.5
+          P A P (Ponto a Ponto) v{Constants.expoConfig?.version}
         </Text>
         <Text style={[styles.copyright, { color: colors.tabIconDefault }]}>
           © 2025 Todos os direitos reservados
@@ -1579,6 +1593,7 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     paddingBottom: 40,
+    marginBottom:60,
     paddingTop: 20,
   },
   version: {

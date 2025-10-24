@@ -317,6 +317,8 @@ export default function RootLayout() {
     
     initSystemConfig();
 
+    // Removido o gate do root; Tabs fará o redirecionamento para evitar conflito de render
+
     // Registrar notificações locais e listeners
     (async () => {
       try {
@@ -340,6 +342,8 @@ export default function RootLayout() {
     return null; // ou um loading screen
   }
 
+  // Gate removido: controle passa para o layout de Tabs
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <RealtimeListener />
@@ -353,6 +357,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth/register/courier" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/admin-panel" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/admin-config" options={{ headerShown: false }} />
+        <Stack.Screen name="telas_extras/version-management" options={{ headerShown: false }} />
         <Stack.Screen name="telas_extras/finance" options={{ headerShown: false }} />
         <Stack.Screen name="pedir/create-shipment" options={{ headerShown: false }} />
         <Stack.Screen name="pedir/map-route" options={{ headerShown: false }} />

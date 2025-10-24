@@ -311,3 +311,33 @@ export interface NavigationParams {
   offerId?: string;
   paymentId?: string;
 }
+
+// Version & Maintenance Types
+export type AppVersionUpdateType = 'optional' | 'required';
+
+export interface AppVersionConfig {
+  id: string; // sempre "current"
+  currentVersion: string; // ex: "1.0.0"
+  minimumVersion: string; // ex: "1.0.0" - versão mínima obrigatória
+  updateType: AppVersionUpdateType; // optional | required
+  releaseNotes?: string;
+  forceUpdateUrl?: string; // link para loja (Google Play, App Store)
+  updatedAt: Date;
+}
+
+export interface MaintenanceConfig {
+  id: string; // sempre "current"
+  isEnabled: boolean;
+  startAt: Date; // quando começa a manutenção
+  durationMinutes: number; // quanto tempo vai durar
+  message: string; // mensagem para o usuário
+  updatedAt: Date;
+}
+
+// Estado local para verificação na inicialização
+export interface AppStartupState {
+  versionStatus: 'ok' | 'outdated' | 'blocked'; // ok: usar app | outdated: aviso | blocked: impedir uso
+  maintenanceStatus: 'ok' | 'maintenance'; // ok: usar app | maintenance: bloquear e avisar
+  maintenanceData?: MaintenanceConfig;
+  versionData?: AppVersionConfig;
+}

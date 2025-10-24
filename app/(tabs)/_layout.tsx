@@ -1,49 +1,121 @@
 import { HapticTab } from '@/components/haptic-tab';
+import { firestore } from '@/config/firebase';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authService } from '@/services/auth.service';
+import { versionManagementService } from '@/services/version-management.service';
 import { Session } from '@/types';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { router, Tabs } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { Tabs, router } from 'expo-router';
+import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
+import { Alert, BackHandler } from 'react-native';
 
 // Lê a sessão do SecureStore via authService
-const getUserRole = async (): Promise<'cliente' | 'courier' | null> => {
+const getUserRole = async (): Promise<'cliente' | 'courier'> => {
   const session = await authService.getSession();
-  if (!session) return null;
+  if (!session) return 'cliente';
   return session.role === 'courier' ? 'courier' : 'cliente';
 };
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const [userRole, setUserRole] = useState<'cliente' | 'courier' | null>(null);
+  const [userRole, setUserRole] = useState<'cliente' | 'courier'>('cliente');
+  const [startupStatus, setStartupStatus] = useState<'ok' | 'blocked' | 'maintenance' | 'outdated'>('ok');
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     (async () => {
       const role = await getUserRole();
-      setUserRole(role ?? 'cliente');
+      setUserRole(role);
       console.log('userRoleaaaaaaaaa', role);
-      setTimeout(() => {
-      if (role === 'courier') {
-        router.replace('/(tabs)/courier/courier-home');
-        } else {
-          router.replace('/(tabs)/cliente/business-home');
-        } 
-      }, 100);
+      // Sem sessão: mantém acesso como cliente (sem redirecionar)
+      try {
+        const state = await versionManagementService.checkAppStartupState();
+        if (state.maintenanceStatus === 'maintenance') {
+          setStartupStatus('maintenance');
+          router.replace('/telas_extras/version-management');
+          return;
+        }
+        if (state.versionStatus === 'blocked') {
+          setStartupStatus('blocked');
+          router.replace('/telas_extras/version-management');
+          return;
+        }
+        setStartupStatus(state.versionStatus || 'ok');
+      } catch (e) {
+        setStartupStatus('ok');
+      } finally {
+        setChecking(false);
+      }
     })();
 
     const unsubscribe = authService.onSessionChanged((session: Session | null) => {
-      setUserRole(session?.role === 'courier' ? 'courier' : 'cliente');
+      const role = session?.role === 'courier' ? 'courier' : 'cliente';
+      setUserRole(role);
+      // Sem redirecionar para login aqui; fluxo aberto como cliente
     });
+
+    // Realtime de versão/manutenção
+    const versionRef = doc(firestore, 'system-config', 'app-version');
+    const maintRef = doc(firestore, 'system-config', 'maintenance');
+    const resub = () => {
+      (async () => {
+        try {
+          const state = await versionManagementService.checkAppStartupState();
+          if (state.maintenanceStatus === 'maintenance') {
+            setStartupStatus('maintenance');
+            router.replace('/telas_extras/version-management');
+            return;
+          }
+          if (state.versionStatus === 'blocked') {
+            setStartupStatus('blocked');
+            router.replace('/telas_extras/version-management');
+            return;
+          }
+          setStartupStatus(state.versionStatus || 'ok');
+        } catch {
+          setStartupStatus('ok');
+        }
+      })();
+    };
+    const un1 = onSnapshot(versionRef, resub);
+    const un2 = onSnapshot(maintRef, resub);
 
     return () => {
       unsubscribe?.();
+      un1();
+      un2();
     };
   }, []);
 
+  // Intercepta back apenas quando o Tabs está focado
+  useFocusEffect(
+    React.useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        Alert.alert('Sair', 'Deseja fechar o aplicativo?', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Sair', style: 'destructive', onPress: () => BackHandler.exitApp() },
+        ]);
+        return true;
+      });
+      return () => sub.remove();
+    }, [])
+  );
+
+  // Bloqueado/manutenção: evita renderizar Tabs aqui
+  if (startupStatus === 'blocked' || startupStatus === 'maintenance') {
+    return null;
+  }
+
+  // Renderiza mesmo durante verificação; gate de manutenção já impede Tabs
+
+  const initialRouteName = userRole === 'courier' ? 'courier/courier-home' : 'cliente/business-home';
 
   return (
     <Tabs
+      initialRouteName={initialRouteName}
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         tabBarInactiveTintColor: Colors[colorScheme ?? 'light'].tabIconDefault,
@@ -118,16 +190,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="courier/courier-shipments"
-        options={{
-          title: 'Entregas',
-          tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name="local-shipping" size={focused ? 26 : 24} color={color} />
-          ),
-          href: userRole === 'courier' ? '/courier/courier-home' : null,
-        }}
-      />
-      <Tabs.Screen
         name="courier/courier-finance"
         options={{
           title: 'Financeiro',
@@ -135,17 +197,6 @@ export default function TabLayout() {
             <MaterialIcons name="account-balance-wallet" size={focused ? 26 : 24} color={color} />
           ),
           href: userRole === 'courier' ? '/courier/courier-finance' : null,
-        }}
-      />
-
-      {/* Botão de atalho para visualizar todas as telas - Always visible */}
-      <Tabs.Screen
-        name="all-screens"
-        options={{
-          title: 'Todas',
-          tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name="apps" size={focused ? 26 : 24} color={color} />
-          ),
         }}
       />
     </Tabs>

@@ -762,6 +762,7 @@ export default function AdminConfigScreen() {
         />
       </View>
 
+
       <View style={styles.footerSpacer} />
     </ScrollView>
   );

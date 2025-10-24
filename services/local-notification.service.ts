@@ -3,10 +3,8 @@ import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
-    // campos opcionais em versões recentes
     shouldShowBanner: true as any,
     shouldShowList: true as any,
   }) as any,
@@ -15,15 +13,20 @@ Notifications.setNotificationHandler({
 export type LocalNotificationData = Record<string, unknown>;
 
 class LocalNotificationService {
-  async register(): Promise<boolean> {
+  async ensureAndroidChannel(): Promise<void> {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
+        name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }
+  }
+
+  async register(): Promise<boolean> {
+    await this.ensureAndroidChannel();
 
     const perm = await Notifications.getPermissionsAsync();
     if (!perm.granted) {
@@ -35,15 +38,22 @@ class LocalNotificationService {
 
   async sendNow(title: string, body: string, data: LocalNotificationData = {}): Promise<void> {
     await Notifications.scheduleNotificationAsync({
-      content: { title, body, data, sound: true, priority: Notifications.AndroidNotificationPriority.MAX },
+      content: { title, body, data, sound: true },
       trigger: null,
     });
   }
 
   async scheduleIn(seconds: number, title: string, body: string, data: LocalNotificationData = {}): Promise<void> {
+    const secs = Math.max(5, Math.floor(seconds));
+    const trigger: Notifications.NotificationTriggerInput = {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: secs,
+      ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
+    } as Notifications.NotificationTriggerInput;
+
     await Notifications.scheduleNotificationAsync({
-      content: { title, body, data, sound: true, priority: Notifications.AndroidNotificationPriority.MAX },
-      trigger: { seconds, channelId: 'default' },
+      content: { title, body, data, sound: true },
+      trigger,
     });
   }
 
