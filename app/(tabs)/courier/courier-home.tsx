@@ -87,6 +87,11 @@ export default function CourierHomeScreen() {
     
     try {
       const session = await authService.getSession();
+      const role = session?.role;
+      if (role !== 'courier') {
+        router.replace('/(tabs)/cliente/business-home');
+        return;
+      }
       if (session) {
         // Converter Session para AuthUser
         const userData: AuthUser = {
@@ -215,7 +220,7 @@ export default function CourierHomeScreen() {
         }
       ];
       
-      setNearbyCouriers(mockCouriers);
+      //setNearbyCouriers(mockCouriers);
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Não foi possível carregar sua localização');

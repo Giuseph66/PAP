@@ -59,6 +59,11 @@ export default function BusinessMapHomeScreen() {
     
     try {
       const session = await authService.getSession();
+      const role = session?.role;
+      if (role !== 'cliente') {
+        router.replace('/(tabs)/courier/courier-home');
+        return;
+      }
       if (session) {
         // Converter Session para AuthUser
         const userData: AuthUser = {
